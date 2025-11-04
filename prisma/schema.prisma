@@ -1,0 +1,44 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearchPostgres", "relationJoins"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MEMBER
+}
+
+model User {
+  id       String  @id @default(uuid()) @db.Uuid
+  fullname String  @db.VarChar
+  email    String  @unique @db.VarChar
+  phone    String? @db.VarChar
+  password String  @db.VarChar
+
+  role UserRole @default(MEMBER)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  Document Document[]
+
+  @@map("users")
+}
+
+model Document {
+  id           String   @id @default(cuid())
+  title        String
+  description  String?
+  coverImage   String? // chemin local ou URL vers l'image de couverture
+  fileUrl      String // chemin local ou URL vers le fichier uploadé
+  fileType     String // ex: "pdf", "docx", "epub"
+  uploadedAt   DateTime @default(now())
+  uploadedBy   User?    @relation(fields: [uploadedById], references: [id])
+  uploadedById String?  @db.Uuid
+}
