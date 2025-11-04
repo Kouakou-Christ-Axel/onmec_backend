@@ -19,6 +19,23 @@ services:
       retries: 20
     restart: unless-stopped
 
+  application:
+    image: onmec_app_image:latest
+    build:
+        context: .
+        dockerfile: Dockerfile
+    container_name: onmec_app
+    depends_on:
+      database:
+        condition: service_healthy
+    env_file:
+      - .env
+    ports:
+      - '8082:8081'
+    networks:
+      - onmec_network
+    restart: unless-stopped
+
 volumes:
   onmec_db_data:
 
