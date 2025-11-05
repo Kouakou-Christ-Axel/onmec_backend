@@ -19,7 +19,7 @@ jobs:
       - name: Deploy to VPS
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
-          cd /var/www/onmec_backend
+          cd ~/onmec_backend
           git reset --hard HEAD
           git pull origin main
           docker compose down
