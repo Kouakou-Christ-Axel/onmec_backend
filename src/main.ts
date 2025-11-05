@@ -1,5 +1,5 @@
 import { RequestLoggerInterceptor } from './request-logger/request-logger.interceptor';
-import { ConsoleLogger, Req, ValidationPipe } from '@nestjs/common';
+import { ConsoleLogger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -43,10 +43,7 @@ async function bootstrap() {
 
   // CORS
   app.enableCors({
-    origin: [
-      'https://chicken-nation-backoffice.vercel.app',
-      'http://localhost:3000',
-    ],
+    origin: ['*'],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });
@@ -65,8 +62,8 @@ async function bootstrap() {
 
   // Liaison du Swagger
   const config = new DocumentBuilder()
-    .setTitle('Chicken-nation API')
-    .setDescription('The Chicken-nation API description')
+    .setTitle('OnMec API')
+    .setDescription('The API description')
     .setVersion('1.0')
     .addBearerAuth()
     .build();
