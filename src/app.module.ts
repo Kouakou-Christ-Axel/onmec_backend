@@ -10,6 +10,7 @@ import { JsonWebTokenModule } from 'src/json-web-token/json-web-token.module';
 import { SimpleStorageModule } from './modules/simple-storage/simple-storage.module';
 import { ImageProcessingModule } from './modules/image-processing/image-processing.module';
 import { LibrairieModule } from './modules/librairie/librairie.module';
+import { SignalementCitoyenModule } from './modules/signalement-citoyen/signalement-citoyen.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { LibrairieModule } from './modules/librairie/librairie.module';
     SimpleStorageModule,
     ImageProcessingModule,
     LibrairieModule,
+    SignalementCitoyenModule,
   ],
 })
 export class AppModule {}

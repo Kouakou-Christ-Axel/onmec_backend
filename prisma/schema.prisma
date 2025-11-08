@@ -26,7 +26,8 @@ model User {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  Document Document[]
+  Document           Document[]
+  SignalementCitoyen SignalementCitoyen[]
 
   @@map("users")
 }
@@ -41,4 +42,53 @@ model Document {
   uploadedAt   DateTime @default(now())
   uploadedBy   User?    @relation(fields: [uploadedById], references: [id])
   uploadedById String?  @db.Uuid
+}
+
+enum StatutSignalement {
+  NOUVEAU
+  EN_COURS
+  RESOLU
+  REJETE
+}
+
+model CategorieSignalement {
+  id                    String  @id @default(uuid()) @db.Uuid
+  nom                   String  @db.VarChar
+  description           String? @db.Text
+  validationObligatoire Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  signalements SignalementCitoyen[]
+
+  @@map("categories_signalement")
+}
+
+model SignalementCitoyen {
+  id          String @id @default(uuid()) @db.Uuid
+  titre       String @db.VarChar
+  description String @db.Text
+
+  categorieId String               @db.Uuid
+  categorie   CategorieSignalement @relation(fields: [categorieId], references: [id])
+  validation  Boolean              @default(false)
+
+  adresse   String  @db.VarChar(255)
+  latitude  Decimal @db.Decimal(10, 7)
+  longitude Decimal @db.Decimal(10, 7)
+
+  photo String? @db.VarChar
+
+  statut StatutSignalement @default(NOUVEAU)
+
+  citoyenId String? @db.Uuid
+  citoyen   User?   @relation(fields: [citoyenId], references: [id])
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@map("signalements_citoyens")
 }
