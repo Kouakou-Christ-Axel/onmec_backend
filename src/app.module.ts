@@ -11,6 +11,8 @@ import { SimpleStorageModule } from './modules/simple-storage/simple-storage.mod
 import { ImageProcessingModule } from './modules/image-processing/image-processing.module';
 import { LibrairieModule } from './modules/librairie/librairie.module';
 import { SignalementCitoyenModule } from './modules/signalement-citoyen/signalement-citoyen.module';
+import { QuizzModule } from './modules/quizz/quizz.module';
+import { NotificationModule } from './modules/notification/notification.module';
 
 @Module({
   imports: [
@@ -26,6 +28,8 @@ import { SignalementCitoyenModule } from './modules/signalement-citoyen/signalem
     ImageProcessingModule,
     LibrairieModule,
     SignalementCitoyenModule,
+    QuizzModule,
+    NotificationModule,
   ],
 })
 export class AppModule {}

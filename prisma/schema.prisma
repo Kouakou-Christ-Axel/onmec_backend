@@ -28,12 +28,16 @@ model User {
 
   Document           Document[]
   SignalementCitoyen SignalementCitoyen[]
+  Notification       Notification[]
+  DeviceToken        DeviceToken[]
+  UserQuiz           UserQuiz[]
+  Quiz               Quiz[]               @relation("QuizAuthor")
 
   @@map("users")
 }
 
 model Document {
-  id           String   @id @default(cuid())
+  id           String   @id @default(uuid())
   title        String
   description  String?
   coverImage   String? // chemin local ou URL vers l'image de couverture
@@ -91,4 +95,90 @@ model SignalementCitoyen {
   deletedAt DateTime?
 
   @@map("signalements_citoyens")
+}
+
+// Quiz créés par les utilisateurs
+model Quiz {
+  id          String   @id @default(uuid()) @db.Uuid
+  title       String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  authorId String @db.Uuid
+  author   User   @relation("QuizAuthor", fields: [authorId], references: [id])
+
+  questions   Question[]
+  userQuizzes UserQuiz[]
+}
+
+// Questions pour chaque quiz
+model Question {
+  id        String   @id @default(uuid()) @db.Uuid // Ajout de @db.Uuid
+  text      String
+  quizId    String   @db.Uuid
+  quiz      Quiz     @relation(fields: [quizId], references: [id])
+  choices   Choice[]
+  correctId String?  @db.Uuid // Ajout de @db.Uuid si c'est une référence UUID
+
+  UserAnswer UserAnswer[]
+}
+
+// Choix possibles pour chaque question
+model Choice {
+  id         String   @id @default(uuid()) @db.Uuid
+  text       String
+  questionId String   @db.Uuid
+  question   Question @relation(fields: [questionId], references: [id])
+
+  UserAnswer UserAnswer[]
+}
+
+// Table intermediaire pour les résultats des quiz par utilisateur
+model UserQuiz {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  quizId      String    @db.Uuid
+  score       Int
+  completedAt DateTime?
+
+  user    User         @relation(fields: [userId], references: [id])
+  quiz    Quiz         @relation(fields: [quizId], references: [id])
+  answers UserAnswer[]
+}
+
+// Table intermediaire pour les réponses des utilisateurs aux questions
+model UserAnswer {
+  id         String @id @default(uuid()) @db.Uuid
+  userQuizId String @db.Uuid
+  questionId String @db.Uuid
+  choiceId   String @db.Uuid
+
+  userQuiz UserQuiz @relation(fields: [userQuizId], references: [id])
+  question Question @relation(fields: [questionId], references: [id])
+  choice   Choice   @relation(fields: [choiceId], references: [id])
+}
+
+// Notifications pour les utilisateurs
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  title     String
+  body      String
+  type      String? // ex: "quiz_result", "new_quiz", "reminder"
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id])
+}
+
+// Tokens de périphériques pour les notifications push
+model DeviceToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  token     String   @unique
+  platform  String? // ex: "android", "ios", "web"
+  createdAt DateTime @default(now())
+
+  userId String? @db.Uuid
+  user   User?   @relation(fields: [userId], references: [id])
 }
