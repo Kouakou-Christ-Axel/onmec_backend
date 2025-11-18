@@ -43,7 +43,11 @@ async function bootstrap() {
 
   // CORS
   app.enableCors({
-    origin: ['*'],
+    origin: [
+      'http://localhost:3000',
+      'http://localhost:8080',
+      'https://admin.mec-ci.org',
+    ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });
@@ -66,6 +70,8 @@ async function bootstrap() {
     .setDescription('The API description')
     .setVersion('1.0')
     .addBearerAuth()
+    .addServer('https://api.mec-ci.org', 'Production server')
+    .addServer('http://localhost:8081', 'Local server')
     .build();
 
   const documentFactory = SwaggerModule.createDocument(app, config);
@@ -74,4 +80,5 @@ async function bootstrap() {
   // Lancer le serveur
   await app.listen(process.env.PORT ?? 8081);
 }
-bootstrap();
+
+void bootstrap();
