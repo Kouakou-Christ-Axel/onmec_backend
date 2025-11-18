@@ -29,7 +29,7 @@ services:
       database:
         condition: service_healthy
     env_file:
-      - .env
+      - .env.test.local
     ports:
       - '8082:8081'
     networks:
