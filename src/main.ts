@@ -36,7 +36,9 @@ async function bootstrap() {
   app.useGlobalFilters(new PrismaExceptionFilter());
 
   // Security middleware
-  app.use(helmet());
+  app.use(helmet({
+    originAgentCluster:false,
+  }));
 
   // Compression
   app.use(compression());
@@ -47,6 +49,7 @@ async function bootstrap() {
       'http://localhost:3000',
       'http://localhost:8080',
       'https://admin.mec-ci.org',
+      'https://api.mec-ci.org',
     ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
