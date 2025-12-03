@@ -4,7 +4,7 @@
   "description": "",
   "author": "",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
@@ -22,7 +22,8 @@
     "db:push": "npx prisma db push",
     "db:pull": "npx prisma db pull",
     "db:generate": "npx prisma generate",
-    "db:migrate": "npx prisma migrate dev"
+    "db:migrate": "npx prisma migrate dev",
+    "db:deploy": "npx prisma migrate deploy"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.920.0",
