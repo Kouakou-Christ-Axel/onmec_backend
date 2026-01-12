@@ -1,4 +1,4 @@
-export default function slugify(text: string): string{
+export default function slugify(text: string, suffix:string = ''): string{
   return text
     .toString()
     .normalize('NFD') // Décompose les caractères accentués
@@ -8,5 +8,6 @@ export default function slugify(text: string): string{
     .replace(/\s+/g, '-') // Espaces -> -
     .replace(/[^a-z0-9\-]/g, '') // Garde uniquement a-z, 0-9 et -
     .replace(/--+/g, '-') // Plusieurs - -> un seul -
-    .replace(/^-+|-+$/g, '');
+    .replace(/^-+|-+$/g, '') // Supprime-les - au début et à la fin
+    + suffix;
 }

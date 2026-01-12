@@ -13,6 +13,7 @@ import { LibrairieModule } from './modules/librairie/librairie.module';
 import { SignalementCitoyenModule } from './modules/signalement-citoyen/signalement-citoyen.module';
 import { QuizzModule } from './modules/quizz/quizz.module';
 import { NotificationModule } from './modules/notification/notification.module';
+import { ActualitesModule } from './modules/actualites/actualites.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { NotificationModule } from './modules/notification/notification.module';
     SignalementCitoyenModule,
     QuizzModule,
     NotificationModule,
+    ActualitesModule,
   ],
 })
 export class AppModule {}

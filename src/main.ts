@@ -18,7 +18,7 @@ async function bootstrap() {
         ? ['error', 'warn', 'log']
         : ['error', 'warn', 'debug', 'verbose', 'log'],
       json: isProduction,
-      prefix: 'luxury_home_abidjan',
+      prefix: 'onmec',
       colors: !isProduction,
     }),
   });
