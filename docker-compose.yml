@@ -13,7 +13,7 @@ services:
     networks:
       - onmec_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d postgres" ]
       interval: 5s
       timeout: 2s
       retries: 20
@@ -22,14 +22,16 @@ services:
   application:
     image: onmec_app_image:latest
     build:
-        context: .
-        dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile
     container_name: onmec_app
+    volumes:
+      - uploads_data:/app/uploads
     depends_on:
       database:
         condition: service_healthy
     env_file:
-      - .env.test.local
+      - .env.local
     ports:
       - '8082:8081'
     networks:
@@ -38,6 +40,7 @@ services:
 
 volumes:
   onmec_db_data:
+  uploads_data:
 
 networks:
   onmec_network:
