@@ -61,7 +61,7 @@ async function bootstrap() {
 	app.setGlobalPrefix('api/v1');
 
 	// Configuration du dossier de téléchargement
-	const uploadsPath = join(__dirname, '..', '..', 'uploads');
+	const uploadsPath = join(__dirname, '..', 'uploads');
 
 	app.useStaticAssets(uploadsPath, {
 		prefix: '/uploads',

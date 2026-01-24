@@ -252,7 +252,7 @@ export class LibrairieService {
 			description: document.description,
 			fileType: document.fileType,
 			fileUrl: `${backendUrl}/api/v1/librairie/${id}/file`,
-			coverImage: document.coverImage,
+			coverImage: `${backendUrl}${document.coverImage}`,
 			uploadedAt: document.uploadedAt,
 			uploadedBy: {
 				id: document.uploadedBy.id,
