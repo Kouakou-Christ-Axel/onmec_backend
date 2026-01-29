@@ -8,7 +8,5 @@ export class CreateSignalementCitoyenDto extends PickType(SignalementCitoyenDto,
   'adresse',
   'latitude',
   'longitude',
-  'photo',
   'citoyenId',
-  'statut'
 ]) {}
