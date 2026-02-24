@@ -10,8 +10,8 @@ export class QuizzService {
   /**
    * Créer un nouveau quiz avec ses questions et choix
    */
-  async create(createQuizzDto: CreateQuizzDto) {
-    const { title, description, authorId, questions } = createQuizzDto;
+  async create(createQuizzDto: CreateQuizzDto, authorId: string) {
+    const { title, description, questions } = createQuizzDto;
 
     // Créer le quiz avec toutes ses questions et choix
     const quiz = await prisma.quiz.create({

@@ -27,9 +27,6 @@ export class CreateQuizzDto {
   @IsString()
   description?: string;
 
-  @IsString()
-  authorId: string;
-
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateQuestionDto)
