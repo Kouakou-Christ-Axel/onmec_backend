@@ -4,21 +4,15 @@ import {
     ArgumentsHost,
     HttpStatus,
 } from '@nestjs/common';
-import {
-    PrismaClientKnownRequestError,
-    PrismaClientUnknownRequestError,
-    PrismaClientValidationError,
-    PrismaClientInitializationError,
-    PrismaClientRustPanicError
-} from '@prisma/client/runtime/client';
+import { Prisma } from '@prisma/client';
 import { Response } from 'express';
 
 @Catch(
-    PrismaClientKnownRequestError,
-    PrismaClientUnknownRequestError,
-    PrismaClientValidationError,
-    PrismaClientInitializationError,
-    PrismaClientRustPanicError
+    Prisma.PrismaClientKnownRequestError,
+    Prisma.PrismaClientUnknownRequestError,
+    Prisma.PrismaClientValidationError,
+    Prisma.PrismaClientInitializationError,
+    Prisma.PrismaClientRustPanicError
 )
 export class PrismaExceptionFilter implements ExceptionFilter {
     catch(exception: any, host: ArgumentsHost) {
@@ -31,19 +25,19 @@ export class PrismaExceptionFilter implements ExceptionFilter {
         let message: string;
 
         // Gestion selon le type d'erreur Prisma
-        if (exception instanceof PrismaClientValidationError) {
+        if (exception instanceof Prisma.PrismaClientValidationError) {
             status = HttpStatus.BAD_REQUEST;
             message = 'Données de requête invalides - Vérifiez les types et champs requis';
-        } else if (exception instanceof PrismaClientInitializationError) {
+        } else if (exception instanceof Prisma.PrismaClientInitializationError) {
             status = HttpStatus.SERVICE_UNAVAILABLE;
             message = 'Service de base de données temporairement indisponible';
-        } else if (exception instanceof PrismaClientRustPanicError) {
+        } else if (exception instanceof Prisma.PrismaClientRustPanicError) {
             status = HttpStatus.INTERNAL_SERVER_ERROR;
             message = 'Erreur critique du moteur de base de données - Redémarrage requis';
-        } else if (exception instanceof PrismaClientUnknownRequestError) {
+        } else if (exception instanceof Prisma.PrismaClientUnknownRequestError) {
             status = HttpStatus.INTERNAL_SERVER_ERROR;
             message = 'Erreur de base de données non identifiée';
-        } else if (exception instanceof PrismaClientKnownRequestError) {
+        } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {
             // Gestion des erreurs connues avec codes spécifiques
             ({ status, message } = this.handleKnownRequestError(exception));
         } else {
@@ -61,7 +55,7 @@ export class PrismaExceptionFilter implements ExceptionFilter {
         });
     }
 
-    private handleKnownRequestError(exception: PrismaClientKnownRequestError): { status: HttpStatus; message: string } {
+    private handleKnownRequestError(exception: Prisma.PrismaClientKnownRequestError): { status: HttpStatus; message: string } {
         const code = exception.code;
 
         // Erreurs communes P1xxx
@@ -95,7 +89,7 @@ export class PrismaExceptionFilter implements ExceptionFilter {
         };
     }
 
-    private handleConnectionErrors(exception: PrismaClientKnownRequestError): { status: HttpStatus; message: string } {
+    private handleConnectionErrors(exception: Prisma.PrismaClientKnownRequestError): { status: HttpStatus; message: string } {
         switch (exception.code) {
             case 'P1000':
                 return { status: HttpStatus.UNAUTHORIZED, message: 'Identifiants de base de données invalides' };
@@ -130,7 +124,7 @@ export class PrismaExceptionFilter implements ExceptionFilter {
         }
     }
 
-    private handleClientErrors(exception: PrismaClientKnownRequestError): { status: HttpStatus; message: string } {
+    private handleClientErrors(exception: Prisma.PrismaClientKnownRequestError): { status: HttpStatus; message: string } {
         switch (exception.code) {
             case 'P2000':
                 return { status: HttpStatus.BAD_REQUEST, message: 'Valeur trop longue pour le champ' };
@@ -211,17 +205,17 @@ export class PrismaExceptionFilter implements ExceptionFilter {
         }
     }
 
-    private handleMigrateErrors(exception: PrismaClientKnownRequestError): { status: HttpStatus; message: string } {
+    private handleMigrateErrors(exception: Prisma.PrismaClientKnownRequestError): { status: HttpStatus; message: string } {
         // Les erreurs de migration sont généralement des erreurs de développement/déploiement
         return { status: HttpStatus.INTERNAL_SERVER_ERROR, message: 'Erreur de migration de base de données' };
     }
 
-    private handleIntrospectionErrors(exception: PrismaClientKnownRequestError): { status: HttpStatus; message: string } {
+    private handleIntrospectionErrors(exception: Prisma.PrismaClientKnownRequestError): { status: HttpStatus; message: string } {
         // Les erreurs d'introspection sont généralement des erreurs de développement
         return { status: HttpStatus.INTERNAL_SERVER_ERROR, message: 'Erreur d\'introspection de base de données' };
     }
 
-    private handleAccelerateErrors(exception: PrismaClientKnownRequestError): { status: HttpStatus; message: string } {
+    private handleAccelerateErrors(exception: Prisma.PrismaClientKnownRequestError): { status: HttpStatus; message: string } {
         switch (exception.code) {
             case 'P5011':
                 return { status: HttpStatus.TOO_MANY_REQUESTS, message: 'Trop de requêtes - Réessayez plus tard' };
@@ -248,7 +242,7 @@ export class PrismaExceptionFilter implements ExceptionFilter {
         }
     }
 
-    private getUniqueConstraintMessage(exception: PrismaClientKnownRequestError): string {
+    private getUniqueConstraintMessage(exception: Prisma.PrismaClientKnownRequestError): string {
         const target = exception.meta?.target as string[];
         if (target && target.length > 0) {
             const field = target[0];
@@ -258,7 +252,7 @@ export class PrismaExceptionFilter implements ExceptionFilter {
     }
 
     private getErrorDetails(exception: any): any {
-        if (exception instanceof PrismaClientKnownRequestError) {
+        if (exception instanceof Prisma.PrismaClientKnownRequestError) {
             return {
                 code: exception.code,
                 meta: exception.meta,
