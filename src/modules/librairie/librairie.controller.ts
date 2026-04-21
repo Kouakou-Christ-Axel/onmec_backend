@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpStatus,
   Param,
   Patch,
   Post,
@@ -12,7 +13,18 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { ApiResponse } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 import { LibrairieService } from './librairie.service';
 import { CreateDocumentDto, DocumentFilesDto } from './dto/create-document.dto';
 import { UpdateDocumentDto } from './dto/update-document.dto';
@@ -24,22 +36,24 @@ import { User } from '@prisma/client';
 import { SearchDocumentDto } from './dto/search-document.dto';
 import { UploadValidationPipe } from '../image-processing/upload-validation/upload-validation.pipe';
 
+@ApiTags('Librairie')
+@ApiBearerAuth('JWT')
 @Controller('librairie')
 export class LibrairieController {
   constructor(private readonly librairieService: LibrairieService) {}
 
   @Post()
-  @ApiResponse({
-    status: 201,
-    description: 'Document créé avec succès',
-    type: DocumentResponseDto,
-  })
   @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Uploader un document', description: 'Crée une nouvelle entrée de document avec fichier et couverture optionnelle.' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ type: CreateDocumentDto })
+  @ApiResponse({ status: HttpStatus.CREATED, description: 'Document créé avec succès', type: DocumentResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'covers', maxCount: 1 },
       { name: 'fichiers', maxCount: 1 },
-    ],{
+    ], {
       dest: './uploads/tmp/librairie',
     }),
   )
@@ -56,26 +70,14 @@ export class LibrairieController {
   }
 
   @Get()
-  @ApiResponse({
-    status: 200,
-    description: 'Liste des documents paginés',
+  @ApiOperation({ summary: 'Liste des documents', description: 'Retourne les documents paginés avec filtres optionnels.' })
+  @ApiOkResponse({
+    description: 'Liste paginée de documents',
     schema: {
-      type: 'object',
-      properties: {
-        data: {
-          type: 'array',
-          items: { $ref: '#/components/schemas/DocumentResponseDto' },
-        },
-        meta: {
-          type: 'object',
-          properties: {
-            total: { type: 'number' },
-            page: { type: 'number' },
-            limit: { type: 'number' },
-            totalPages: { type: 'number' },
-          },
-        },
-      },
+      allOf: [
+        { $ref: '#/components/schemas/PaginatedResponseDto' },
+        { properties: { data: { type: 'array', items: { $ref: '#/components/schemas/DocumentResponseDto' } } } },
+      ],
     },
   })
   findAll(@Query() searchParams: SearchDocumentDto) {
@@ -83,30 +85,29 @@ export class LibrairieController {
   }
 
   @Get(':id')
-  @ApiResponse({
-    status: 200,
-    description: 'Document trouvé',
-    type: DocumentResponseDto,
-  })
+  @ApiOperation({ summary: 'Détail d\'un document' })
+  @ApiParam({ name: 'id', description: 'Identifiant du document', example: '550e8400-e29b-41d4-a716-446655440000' })
+  @ApiOkResponse({ description: 'Document trouvé', type: DocumentResponseDto })
+  @ApiNotFoundResponse({ description: 'Document non trouvé' })
   findOne(@Param('id') id: string) {
     return this.librairieService.findOne(id);
   }
 
   @Get(':id/file')
-  @ApiResponse({
-    status: 200,
-    description: 'Fichier du document',
-  })
+  @ApiOperation({ summary: 'Télécharger le fichier', description: 'Retourne l\'URL de téléchargement du fichier associé au document.' })
+  @ApiParam({ name: 'id', description: 'Identifiant du document', example: '550e8400-e29b-41d4-a716-446655440000' })
+  @ApiOkResponse({ description: 'URL du fichier retournée' })
+  @ApiNotFoundResponse({ description: 'Document non trouvé' })
   async getFile(@Param('id') id: string) {
     return await this.librairieService.getFile(id);
   }
 
   @Patch(':id')
-  @ApiResponse({
-    status: 200,
-    description: 'Document mis à jour',
-    type: DocumentResponseDto,
-  })
+  @ApiOperation({ summary: 'Modifier un document' })
+  @ApiParam({ name: 'id', description: 'Identifiant du document', example: '550e8400-e29b-41d4-a716-446655440000' })
+  @ApiBody({ type: UpdateDocumentDto })
+  @ApiOkResponse({ description: 'Document mis à jour', type: DocumentResponseDto })
+  @ApiNotFoundResponse({ description: 'Document non trouvé' })
   update(
     @Param('id') id: string,
     @Body() updateLibrairieDto: UpdateDocumentDto,
@@ -115,10 +116,10 @@ export class LibrairieController {
   }
 
   @Delete(':id')
-  @ApiResponse({
-    status: 200,
-    description: 'Document supprimé',
-  })
+  @ApiOperation({ summary: 'Supprimer un document' })
+  @ApiParam({ name: 'id', description: 'Identifiant du document', example: '550e8400-e29b-41d4-a716-446655440000' })
+  @ApiOkResponse({ description: 'Document supprimé' })
+  @ApiNotFoundResponse({ description: 'Document non trouvé' })
   remove(@Param('id') id: string) {
     return this.librairieService.remove(id);
   }
