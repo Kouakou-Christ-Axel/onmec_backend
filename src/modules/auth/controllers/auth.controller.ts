@@ -1,14 +1,14 @@
-import { Body, Controller, Get, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { AuthService } from 'src/modules/auth/services/auth.service';
 import { LoginUserDto } from 'src/modules/auth/dto/login-user.dto';
 import {
   ApiBearerAuth,
   ApiBody,
   ApiConflictResponse,
+  ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
-  ApiResponse,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
@@ -44,7 +44,7 @@ export class AuthController {
   @Post('register')
   @ApiOperation({ summary: 'Création de compte', description: 'Crée un nouveau compte utilisateur.' })
   @ApiBody({ type: RegisterUserDto })
-  @ApiResponse({ status: HttpStatus.CREATED, description: 'Compte créé avec succès' })
+  @ApiCreatedResponse({ description: 'Compte créé avec succès' })
   @ApiConflictResponse({ description: 'Un compte avec cet email existe déjà' })
   async register(@Body() data: RegisterUserDto) {
     return this.authService.register(data);

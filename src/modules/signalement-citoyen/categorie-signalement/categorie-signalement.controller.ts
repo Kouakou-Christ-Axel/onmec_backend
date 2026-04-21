@@ -15,7 +15,7 @@ import {JwtAuthGuard} from "../../auth/guards/jwt-auth.guard";
 import {AdminGuard} from "../../auth/guards/admin.guard";
 
 @ApiTags('Catégorie Signalement')
-@ApiBearerAuth()
+@ApiBearerAuth('JWT')
 @Controller('categorie-signalement')
 export class CategorieSignalementController {
   constructor(private readonly categorieSignalementService: CategorieSignalementService) {}

@@ -26,7 +26,7 @@ import {AdminGuard} from '../auth/guards/admin.guard';
 import {FilesInterceptor} from '@nestjs/platform-express';
 
 @ApiTags('Signalement Citoyen')
-@ApiBearerAuth()
+@ApiBearerAuth('JWT')
 @Controller('signalement-citoyen')
 export class SignalementCitoyenController {
 	constructor(

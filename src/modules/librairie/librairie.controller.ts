@@ -37,13 +37,13 @@ import { SearchDocumentDto } from './dto/search-document.dto';
 import { UploadValidationPipe } from '../image-processing/upload-validation/upload-validation.pipe';
 
 @ApiTags('Librairie')
-@ApiBearerAuth('JWT')
 @Controller('librairie')
 export class LibrairieController {
   constructor(private readonly librairieService: LibrairieService) {}
 
   @Post()
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT')
   @ApiOperation({ summary: 'Uploader un document', description: 'Crée une nouvelle entrée de document avec fichier et couverture optionnelle.' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({ type: CreateDocumentDto })
