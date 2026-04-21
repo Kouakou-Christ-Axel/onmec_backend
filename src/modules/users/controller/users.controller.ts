@@ -1,12 +1,17 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpStatus, Param, Patch, Post, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBadRequestResponse,
+  ApiBearerAuth,
   ApiBody,
+  ApiConsumes,
   ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
@@ -20,7 +25,10 @@ import { UpdateUserPasswordDto } from 'src/modules/users/dto/update-user-passwor
 import { UpdateUserDto } from 'src/modules/users/dto/update-user.dto';
 import { UsersService } from 'src/modules/users/services/users.service';
 import { ResetUserPasswordResponseDto } from '../dto/reset-user-password.dto';
+import { UserResponseDto } from '../dto/user-response.dto';
 
+@ApiTags('Utilisateurs')
+@ApiBearerAuth('JWT')
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) { }
@@ -29,14 +37,12 @@ export class UsersController {
   @Post()
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor('image', { ...GenerateConfigService.generateConfigSingleImageUpload('./uploads/users-avatar') }))
-  @ApiOperation({ summary: 'Création utilisateur' })
-  @ApiCreatedResponse({
-    description: 'Utilisateur créé avec succès',
-  })
-  @ApiBadRequestResponse({
-    description: "Utilisateur déjà existant, changer d'email",
-  })
+  @ApiOperation({ summary: 'Créer un utilisateur (Admin)', description: 'Crée un nouveau compte utilisateur avec avatar optionnel. Nécessite d\'être authentifié.' })
+  @ApiConsumes('multipart/form-data')
   @ApiBody({ type: CreateUserDto })
+  @ApiCreatedResponse({ description: 'Utilisateur créé avec succès', type: UserResponseDto })
+  @ApiBadRequestResponse({ description: 'Email déjà utilisé' })
+  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
   async create(@Req() req: Request, @Body() createUserDto: CreateUserDto, @UploadedFile() image: Express.Multer.File) {
     const resizedPath = await GenerateConfigService.compressImages(
       { "img_1": image?.path },
@@ -55,16 +61,13 @@ export class UsersController {
   @Post('member')
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor('image', { ...GenerateConfigService.generateConfigSingleImageUpload('./uploads/users-avatar') }))
-  @ApiOperation({ summary: 'Création membre' })
-  @ApiCreatedResponse({
-    description: 'Membre créé avec succès',
-  })
-  @ApiBadRequestResponse({
-    description: "Membre déjà existant, changer d'email",
-  })
+  @ApiOperation({ summary: 'Créer un membre', description: 'Crée un nouveau compte membre avec avatar optionnel.' })
+  @ApiConsumes('multipart/form-data')
   @ApiBody({ type: CreateUserDto })
+  @ApiCreatedResponse({ description: 'Membre créé avec succès', type: UserResponseDto })
+  @ApiBadRequestResponse({ description: 'Email déjà utilisé' })
+  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
   async createMember(@Req() req: Request, @Body() createUserDto: CreateUserDto, @UploadedFile() image: Express.Multer.File) {
-
     const resizedPath = await GenerateConfigService.compressImages(
       { "img_1": image?.path },
       undefined,
@@ -75,19 +78,14 @@ export class UsersController {
       },
       true,
     );
-
     return this.usersService.createMember(req, { ...createUserDto, image: resizedPath!["img_1"] ?? image?.path });
   }
   // GET DETAIL USER
   @Get('detail')
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: "Obtenir les détails d'utilisateur" })
-  @ApiOkResponse({
-    description: 'Profil utilisateur récupéré avec succès',
-  })
-  @ApiNotFoundResponse({
-    description: 'Utilisateur non trouvé',
-  })
+  @ApiOperation({ summary: 'Mon profil', description: 'Retourne le profil de l\'utilisateur authentifié.' })
+  @ApiOkResponse({ description: 'Profil récupéré', type: UserResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
   detail(@Req() req: Request) {
     return this.usersService.detail(req);
   }
@@ -95,13 +93,9 @@ export class UsersController {
   // GET ALL USERS
   @Get()
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Obtenir la liste des utilisateurs' })
-  @ApiOkResponse({
-    description: 'Liste des utilisateurs récupérée avec succès',
-  })
-  @ApiNotFoundResponse({
-    description: 'Utilisateur non trouvé',
-  })
+  @ApiOperation({ summary: 'Liste des utilisateurs', description: 'Retourne tous les utilisateurs (admin requis implicitement).' })
+  @ApiOkResponse({ description: 'Liste récupérée', type: [UserResponseDto] })
+  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
   findAll() {
     return this.usersService.findAll();
   }
@@ -110,14 +104,12 @@ export class UsersController {
   @Patch()
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor('image', { ...GenerateConfigService.generateConfigSingleImageUpload('./uploads/users-avatar') }))
-  @ApiOperation({ summary: 'Mise à jour utilisateur' })
-  @ApiOkResponse({
-    description: 'Utilisateur mis à jour avec succès',
-  })
-  @ApiBadRequestResponse({
-    description: 'Utilisateur non trouvé',
-  })
+  @ApiOperation({ summary: 'Mettre à jour mon profil' })
+  @ApiConsumes('multipart/form-data')
   @ApiBody({ type: UpdateUserDto })
+  @ApiOkResponse({ description: 'Profil mis à jour', type: UserResponseDto })
+  @ApiBadRequestResponse({ description: 'Données invalides' })
+  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
   async update(@Req() req: Request, @Body() updateUserDto: UpdateUserDto, @UploadedFile() image: Express.Multer.File) {
     const resizedPath = await GenerateConfigService.compressImages(
       { "img_1": image?.path },
@@ -135,32 +127,27 @@ export class UsersController {
   // UPDATE PASSWORD
   @Patch('password')
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Mise à jour mot de passe utilisateur' })
-  @ApiOkResponse({
-    description: 'Mot de passe mis à jour avec succès',
-  })
-  @ApiBadRequestResponse({
-    description: 'Utilisateur non trouvé',
-  })
+  @ApiOperation({ summary: 'Changer mon mot de passe' })
   @ApiBody({ type: UpdateUserPasswordDto })
+  @ApiOkResponse({ description: 'Mot de passe mis à jour' })
+  @ApiBadRequestResponse({ description: 'Mot de passe actuel incorrect' })
+  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
   async updatePassword(
     @Req() req: Request,
     @Body() updateUserPasswordDto: UpdateUserPasswordDto,
   ) {
     return this.usersService.updatePassword(req, updateUserPasswordDto);
   }
-  // UPDATE PASSWORD
+  // RESET PASSWORD (Admin)
   @Patch(':id/reset-password')
   @UseGuards(JwtAuthGuard, UserRolesGuard)
   @UserRoles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Renouvellement mot de passe utilisateur' })
-  @ApiOkResponse({
-    description: 'Mot de passe mis à jour avec succès',
-    type: ResetUserPasswordResponseDto,
-  })
-  @ApiBadRequestResponse({
-    description: 'Utilisateur non trouvé',
-  })
+  @ApiOperation({ summary: 'Réinitialiser le mot de passe (Admin)', description: 'Génère un nouveau mot de passe temporaire pour l\'utilisateur spécifié.' })
+  @ApiParam({ name: 'id', description: 'Identifiant de l\'utilisateur', example: 'u1b2c3d4-e5f6-7890-abcd-ef1234567890' })
+  @ApiOkResponse({ description: 'Nouveau mot de passe généré', type: ResetUserPasswordResponseDto })
+  @ApiNotFoundResponse({ description: 'Utilisateur non trouvé' })
+  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Réservé aux administrateurs' })
   async resetPassword(
     @Req() req: Request,
     @Param('id') user_id: string,
@@ -169,29 +156,23 @@ export class UsersController {
   }
 
   // PARTIAL DELETE
-  @ApiOperation({ summary: 'Supprimer partiellement utilisateur' })
-  @ApiOkResponse({
-    description: 'Utilisateur supprimé partiellement avec succès',
-  })
-  @ApiUnauthorizedResponse({
-    description: 'Utilisateur non trouvé',
-  })
-  @UseGuards(JwtAuthGuard)
   @Delete()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Désactiver mon compte', description: 'Soft delete du compte de l\'utilisateur authentifié.' })
+  @ApiOkResponse({ description: 'Compte désactivé' })
+  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
   async partialDelete(@Req() req: Request) {
     return this.usersService.partialRemove(req);
   }
 
-  // RESTAURATION 
+  // RESTAURATION
   @Post('restore/:id')
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Restaurer utilisateur' })
-  @ApiOkResponse({
-    description: 'Utilisateur restauré avec succès',
-  })
-  @ApiUnauthorizedResponse({
-    description: 'Utilisateur non trouvé',
-  })
+  @ApiOperation({ summary: 'Restaurer un compte', description: 'Réactive un compte préalablement désactivé.' })
+  @ApiParam({ name: 'id', description: 'Identifiant de l\'utilisateur', example: 'u1b2c3d4-e5f6-7890-abcd-ef1234567890' })
+  @ApiOkResponse({ description: 'Compte restauré', type: UserResponseDto })
+  @ApiNotFoundResponse({ description: 'Utilisateur non trouvé' })
+  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
   async restore(@Req() req: Request, @Param('id') id: string) {
     return this.usersService.restore(req, id);
   }
@@ -199,13 +180,11 @@ export class UsersController {
   // DELETE
   @Delete('/delete/:id')
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Supprimer définitivement utilisateur' })
-  @ApiOkResponse({
-    description: 'Utilisateur supprimé définitivement avec succès',
-  })
-  @ApiBadRequestResponse({
-    description: 'Utilisateur non trouvé',
-  })
+  @ApiOperation({ summary: 'Supprimer définitivement (Admin)', description: 'Suppression permanente et irréversible du compte.' })
+  @ApiParam({ name: 'id', description: 'Identifiant de l\'utilisateur', example: 'u1b2c3d4-e5f6-7890-abcd-ef1234567890' })
+  @ApiOkResponse({ description: 'Compte supprimé définitivement' })
+  @ApiNotFoundResponse({ description: 'Utilisateur non trouvé' })
+  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
   async delete(@Req() req: Request, @Param('id') id: string) {
     return this.usersService.remove(req, id);
   }
