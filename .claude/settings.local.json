@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//mnt/c/Users/kouax/WebstormProjects/**)",
+      "Bash(rtk npx *)",
+      "Bash(npx prisma *)",
+      "Bash(npx tsc *)",
+      "Bash(rtk tsc *)",
+      "Bash(npm run *)",
+      "Bash(rtk git *)",
+      "Bash(rtk ls *)",
+      "Bash(rtk grep *)",
+      "Bash(node *)",
+      "Bash(rtk pnpm *)",
+      "Bash(npm install *)",
+      "Bash(pnpm add *)",
+      "Bash(pnpm approve-builds *)",
+      "Bash(pnpm exec *)",
+      "WebFetch(domain:www.prisma.io)",
+      "WebSearch",
+      "Bash(pnpm config *)",
+      "Bash(pnpm install *)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('pnpm', {}\\), indent=2\\)\\)\")",
+      "mcp__MCP_DOCKER__mcp-find",
+      "mcp__MCP_DOCKER__mcp-add"
+    ]
+  }
+}
