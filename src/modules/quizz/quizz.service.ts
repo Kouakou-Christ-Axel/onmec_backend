@@ -1,167 +1,103 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { PrismaService } from '../../database/services/prisma.service';
 import { CreateQuizzDto } from './dto/create-quizz.dto';
 import { SubmitAnswerDto } from './dto/submit-answer.dto';
-
-const prisma = new PrismaClient();
+import { SearchQuizzDto } from './dto/search-quizz.dto';
+import { CreateCategorieQuizDto, UpdateCategorieQuizDto } from './dto/create-categorie-quiz.dto';
 
 @Injectable()
 export class QuizzService {
-  /**
-   * Créer un nouveau quiz avec ses questions et choix
-   */
-  async create(createQuizzDto: CreateQuizzDto, authorId: string) {
-    const { title, description, questions } = createQuizzDto;
+  constructor(private readonly prisma: PrismaService) {}
 
-    // Créer le quiz avec toutes ses questions et choix
-    const quiz = await prisma.quiz.create({
+  async create(createQuizzDto: CreateQuizzDto, authorId: string) {
+    const { title, description, difficulte, categorieId, questions } = createQuizzDto;
+
+    const quiz = await this.prisma.quiz.create({
       data: {
         title,
         description,
+        difficulte,
+        categorieId,
         authorId,
         questions: {
-          create: questions.map((question) => {
-            // Trouver l'index du choix correct
-            const correctChoiceIndex = question.choices.findIndex((c) => c.isCorrect);
-
-            return {
-              text: question.text,
-              correctId: correctChoiceIndex !== -1 ? undefined : null, // Mettre à jour plus tard si nécessaire
-              choices: {
-                create: question.choices.map((choice) => ({
-                  text: choice.text,
-                })),
-              },
-            };
-          }),
+          create: questions.map((question) => ({
+            text: question.text,
+            correctId: null,
+            choices: {
+              create: question.choices.map((choice) => ({ text: choice.text })),
+            },
+          })),
         },
       },
       include: {
-        questions: {
-          include: {
-            choices: true,
-          },
-        },
+        questions: { include: { choices: true } },
       },
     });
 
-    // Mettre à jour le correctId pour chaque question
     for (let i = 0; i < questions.length; i++) {
-      const questionData = questions[i];
-      const createdQuestion = quiz.questions[i];
-      const correctChoiceIndex = questionData.choices.findIndex((c) => c.isCorrect);
-
+      const correctChoiceIndex = questions[i].choices.findIndex((c) => c.isCorrect);
       if (correctChoiceIndex !== -1) {
-        const correctChoice = createdQuestion.choices[correctChoiceIndex];
-        await prisma.question.update({
-          where: { id: createdQuestion.id },
+        const correctChoice = quiz.questions[i].choices[correctChoiceIndex];
+        await this.prisma.question.update({
+          where: { id: quiz.questions[i].id },
           data: { correctId: correctChoice.id },
         });
       }
     }
 
-    // Récupérer le quiz complet mis à jour
-    return prisma.quiz.findUnique({
+    return this.prisma.quiz.findUnique({
       where: { id: quiz.id },
       include: {
-        author: {
-          select: {
-            id: true,
-            fullname: true,
-            email: true,
-          },
-        },
-        questions: {
-          include: {
-            choices: true,
-          },
-        },
+        author: { select: { id: true, fullname: true, email: true } },
+        categorie: { select: { id: true, nom: true } },
+        questions: { include: { choices: true } },
       },
     });
   }
 
-  /**
-   * Récupérer tous les quiz
-   */
-  async findAll() {
-    return prisma.quiz.findMany({
+  async findAll(query: SearchQuizzDto = {}) {
+    const where: Record<string, unknown> = {};
+
+    if (query.categorieId) where.categorieId = query.categorieId;
+    if (query.difficulte) where.difficulte = query.difficulte;
+
+    return this.prisma.quiz.findMany({
+      where,
       include: {
-        author: {
-          select: {
-            id: true,
-            fullname: true,
-            email: true,
-          },
-        },
-        questions: {
-          include: {
-            choices: true,
-          },
-        },
-        _count: {
-          select: {
-            userQuizzes: true,
-          },
-        },
+        author: { select: { id: true, fullname: true, email: true } },
+        categorie: { select: { id: true, nom: true } },
+        questions: { include: { choices: true } },
+        _count: { select: { userQuizzes: true } },
       },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      orderBy: { createdAt: 'desc' },
     });
   }
 
-  /**
-   * Récupérer un quiz par son ID
-   */
   async findOne(id: string) {
-    const quiz = await prisma.quiz.findUnique({
+    const quiz = await this.prisma.quiz.findUnique({
       where: { id },
       include: {
-        author: {
-          select: {
-            id: true,
-            fullname: true,
-            email: true,
-          },
-        },
-        questions: {
-          include: {
-            choices: true,
-          },
-        },
+        author: { select: { id: true, fullname: true, email: true } },
+        categorie: { select: { id: true, nom: true, description: true } },
+        questions: { include: { choices: true } },
       },
     });
 
-    if (!quiz) {
-      throw new NotFoundException(`Quiz avec l'ID ${id} non trouvé`);
-    }
+    if (!quiz) throw new NotFoundException(`Quiz avec l'ID ${id} non trouvé`);
 
     return quiz;
   }
 
-  /**
-   * Soumettre les réponses d'un utilisateur à un quiz
-   */
   async submitAnswers(submitAnswerDto: SubmitAnswerDto) {
     const { userId, quizId, answers } = submitAnswerDto;
 
-    // Vérifier que le quiz existe et récupérer les bonnes réponses
-    const quiz = await prisma.quiz.findUnique({
+    const quiz = await this.prisma.quiz.findUnique({
       where: { id: quizId },
-      include: {
-        questions: {
-          include: {
-            choices: true,
-          },
-        },
-      },
+      include: { questions: { include: { choices: true } } },
     });
 
-    if (!quiz) {
-      throw new NotFoundException(`Quiz avec l'ID ${quizId} non trouvé`);
-    }
+    if (!quiz) throw new NotFoundException(`Quiz avec l'ID ${quizId} non trouvé`);
 
-    // Calculer le score
     let correctCount = 0;
     const totalQuestions = quiz.questions.length;
 
@@ -174,8 +110,7 @@ export class QuizzService {
 
     const score = Math.round((correctCount / totalQuestions) * 100);
 
-    // Enregistrer le résultat du quiz
-    const userQuiz = await prisma.userQuiz.create({
+    const userQuiz = await this.prisma.userQuiz.create({
       data: {
         userId,
         quizId,
@@ -191,108 +126,49 @@ export class QuizzService {
       include: {
         answers: {
           include: {
-            question: {
-              select: {
-                id: true,
-                text: true,
-                correctId: true,
-              },
-            },
-            choice: {
-              select: {
-                id: true,
-                text: true,
-              },
-            },
+            question: { select: { id: true, text: true, correctId: true } },
+            choice: { select: { id: true, text: true } },
           },
         },
-        quiz: {
-          select: {
-            id: true,
-            title: true,
-            description: true,
-          },
-        },
+        quiz: { select: { id: true, title: true, description: true } },
       },
     });
 
-    return {
-      userQuiz,
-      score,
-      correctCount,
-      totalQuestions,
-      percentage: score,
-    };
+    return { userQuiz, score, correctCount, totalQuestions, percentage: score };
   }
 
-  /**
-   * Récupérer les résultats d'un utilisateur
-   */
   async getUserResults(userId: string) {
-    return prisma.userQuiz.findMany({
+    return this.prisma.userQuiz.findMany({
       where: { userId },
       include: {
-        quiz: {
-          select: {
-            id: true,
-            title: true,
-            description: true,
-          },
-        },
+        quiz: { select: { id: true, title: true, description: true } },
         answers: {
           include: {
-            question: {
-              select: {
-                id: true,
-                text: true,
-                correctId: true,
-              },
-            },
-            choice: {
-              select: {
-                id: true,
-                text: true,
-              },
-            },
+            question: { select: { id: true, text: true, correctId: true } },
+            choice: { select: { id: true, text: true } },
           },
         },
       },
-      orderBy: {
-        completedAt: 'desc',
-      },
+      orderBy: { completedAt: 'desc' },
     });
   }
 
-  /**
-   * Récupérer les statistiques d'un quiz
-   */
   async getQuizStatistics(quizId: string) {
-    const quiz = await prisma.quiz.findUnique({
+    const quiz = await this.prisma.quiz.findUnique({
       where: { id: quizId },
       include: {
         userQuizzes: {
           select: {
             score: true,
             completedAt: true,
-            user: {
-              select: {
-                id: true,
-                fullname: true,
-              },
-            },
+            user: { select: { id: true, fullname: true } },
           },
         },
-        questions: {
-          select: {
-            id: true,
-          },
-        },
+        questions: { select: { id: true } },
       },
     });
 
-    if (!quiz) {
-      throw new NotFoundException(`Quiz avec l'ID ${quizId} non trouvé`);
-    }
+    if (!quiz) throw new NotFoundException(`Quiz avec l'ID ${quizId} non trouvé`);
 
     const totalAttempts = quiz.userQuizzes.length;
     const averageScore =
@@ -307,29 +183,58 @@ export class QuizzService {
       totalAttempts,
       averageScore: Math.round(averageScore),
       recentAttempts: quiz.userQuizzes
-        .sort((a, b) => (b.completedAt || new Date()).getTime() - (a.completedAt || new Date()).getTime())
+        .sort(
+          (a, b) =>
+            (b.completedAt || new Date()).getTime() -
+            (a.completedAt || new Date()).getTime(),
+        )
         .slice(0, 10),
     };
   }
 
-  /**
-   * Supprimer un quiz
-   */
   async remove(id: string) {
-    const quiz = await prisma.quiz.findUnique({
+    const quiz = await this.prisma.quiz.findUnique({ where: { id } });
+
+    if (!quiz) throw new NotFoundException(`Quiz avec l'ID ${id} non trouvé`);
+
+    await this.prisma.quiz.delete({ where: { id } });
+
+    return { message: `Quiz "${quiz.title}" supprimé avec succès` };
+  }
+
+  // ─── Catégories ────────────────────────────────────────────────────────────
+
+  async createCategorie(dto: CreateCategorieQuizDto) {
+    return this.prisma.categorieQuiz.create({ data: dto });
+  }
+
+  async findAllCategories() {
+    return this.prisma.categorieQuiz.findMany({
+      include: { _count: { select: { quizzes: true } } },
+      orderBy: { nom: 'asc' },
+    });
+  }
+
+  async findOneCategorie(id: string) {
+    const categorie = await this.prisma.categorieQuiz.findUnique({
       where: { id },
+      include: { _count: { select: { quizzes: true } } },
     });
 
-    if (!quiz) {
-      throw new NotFoundException(`Quiz avec l'ID ${id} non trouvé`);
-    }
+    if (!categorie)
+      throw new NotFoundException(`Catégorie avec l'ID ${id} non trouvée`);
 
-    await prisma.quiz.delete({
-      where: { id },
-    });
+    return categorie;
+  }
 
-    return {
-      message: `Quiz "${quiz.title}" supprimé avec succès`,
-    };
+  async updateCategorie(id: string, dto: UpdateCategorieQuizDto) {
+    await this.findOneCategorie(id);
+    return this.prisma.categorieQuiz.update({ where: { id }, data: dto });
+  }
+
+  async removeCategorie(id: string) {
+    const categorie = await this.findOneCategorie(id);
+    await this.prisma.categorieQuiz.delete({ where: { id } });
+    return { message: `Catégorie "${categorie.nom}" supprimée avec succès` };
   }
 }

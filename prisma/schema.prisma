@@ -98,16 +98,38 @@ model SignalementCitoyen {
   @@map("signalements_citoyens")
 }
 
+enum QuizDifficulte {
+  FACILE
+  MOYEN
+  DIFFICILE
+}
+
+model CategorieQuiz {
+  id          String  @id @default(uuid()) @db.Uuid
+  nom         String  @db.VarChar
+  description String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  quizzes Quiz[]
+
+  @@map("categories_quiz")
+}
+
 // Quiz créés par les utilisateurs
 model Quiz {
-  id          String   @id @default(uuid()) @db.Uuid
+  id          String          @id @default(uuid()) @db.Uuid
   title       String
   description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  difficulte  QuizDifficulte?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
 
-  authorId String @db.Uuid
-  author   User   @relation("QuizAuthor", fields: [authorId], references: [id])
+  authorId    String         @db.Uuid
+  author      User           @relation("QuizAuthor", fields: [authorId], references: [id])
+  categorieId String?        @db.Uuid
+  categorie   CategorieQuiz? @relation(fields: [categorieId], references: [id])
 
   questions   Question[]
   userQuizzes UserQuiz[]
