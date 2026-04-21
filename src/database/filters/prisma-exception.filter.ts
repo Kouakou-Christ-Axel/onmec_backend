@@ -10,7 +10,7 @@ import {
     PrismaClientValidationError,
     PrismaClientInitializationError,
     PrismaClientRustPanicError
-} from '@prisma/client/runtime/library';
+} from '@prisma/client/runtime/client';
 import { Response } from 'express';
 
 @Catch(
