@@ -56,7 +56,11 @@ jobs:
             set -e
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh" || { echo "nvm introuvable"; exit 1; }
-            cd /var/www/onmec/backend
+            APP_DIR="/var/www/onmec/backend"
+            if [ ! -d "$APP_DIR/.git" ]; then
+              git clone git@github.com:${{ github.repository }}.git "$APP_DIR"
+            fi
+            cd "$APP_DIR"
             git pull origin master
             pnpm install --frozen-lockfile
             npx prisma migrate deploy
