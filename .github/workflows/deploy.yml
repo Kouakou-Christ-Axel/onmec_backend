@@ -18,7 +18,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: latest
+          version: '10'
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
@@ -57,12 +57,12 @@ jobs:
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'ENDSSH'
             set -e
             export NVM_DIR="$HOME/.nvm"
-            source "$NVM_DIR/nvm.sh"
+            [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh" || { echo "nvm introuvable"; exit 1; }
             cd ~/onmec_backend
             git pull origin master
             pnpm install --frozen-lockfile
-            npx prisma generate
             npx prisma migrate deploy
+            npx prisma generate
             pnpm build
             pm2 reload ecosystem.config.js --env production
           ENDSSH
