@@ -32,6 +32,9 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
+      - name: Lint
+        run: npx eslint "{src,apps,libs,test}/**/*.ts"
+
       - name: Type check
         run: npx tsc --noEmit
 
@@ -84,7 +87,31 @@ jobs:
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh" || { echo "nvm introuvable"; exit 1; }
             cd /var/www/onmec/backend
-            npx prisma generate
-            pnpm build
-            pm2 reload ecosystem.config.js --env production
+
+            # Backup dist for rollback
+            cp -r dist dist_backup 2>/dev/null || true
+
+            # Build
+            if ! npx prisma generate || ! pnpm build; then
+              echo "Build failed — restoring previous dist"
+              rm -rf dist && mv dist_backup dist 2>/dev/null || true
+              exit 1
+            fi
+
+            # Reload with rollback on failure
+            if ! pm2 reload ecosystem.config.js --env production; then
+              echo "Reload failed — restoring previous dist"
+              rm -rf dist && mv dist_backup dist
+              pm2 reload ecosystem.config.js --env production
+              exit 1
+            fi
+
+            rm -rf dist_backup
+
+            # Health check
+            sleep 5
+            if ! pm2 list | grep -q "onmec-api.*online"; then
+              echo "App not online after deploy"
+              exit 1
+            fi
           ENDSSH
