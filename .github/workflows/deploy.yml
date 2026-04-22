@@ -24,12 +24,30 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '22'
-          cache: 'pnpm'
+
+      - name: Get pnpm store path
+        id: pnpm-cache
+        run: echo "store=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.store }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Cache Prisma client
+        id: prisma-cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.prisma
+          key: prisma-${{ runner.os }}-${{ hashFiles('prisma/schema.prisma') }}
+
       - name: Generate Prisma client
+        if: steps.prisma-cache.outputs.cache-hit != 'true'
         run: npx prisma generate
         env:
           DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
