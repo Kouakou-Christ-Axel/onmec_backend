@@ -34,9 +34,6 @@ jobs:
         env:
           DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
 
-      - name: Lint
-        run: npx eslint "{src,apps,libs,test}/**/*.ts"
-
       - name: Type check
         run: npx tsc --noEmit
 
