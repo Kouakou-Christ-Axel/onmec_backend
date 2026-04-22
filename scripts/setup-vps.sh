@@ -40,11 +40,13 @@ apt-get update -q
 apt-get install -y postgresql-15 postgresql-client-15
 
 echo "=== [5/7] Création de la base de données et de l'utilisateur ==="
-# Remplacer CHANGE_ME par un mot de passe sécurisé
-DB_PASSWORD="CHANGE_ME"
+if [ -z "${DB_PASSWORD:-}" ]; then
+  read -rsp "Mot de passe PostgreSQL pour $DB_USER: " DB_PASSWORD
+  echo
+fi
 su - postgres -c "
   psql -tc \"SELECT 1 FROM pg_roles WHERE rolname='$DB_USER'\" | grep -q 1 || \
-    psql -c \"CREATE USER $DB_USER WITH PASSWORD '$DB_PASSWORD';\"
+    psql -c \"CREATE USER $DB_USER WITH PASSWORD \\\$\\\$$DB_PASSWORD\\\$\\\$;\"
   psql -tc \"SELECT 1 FROM pg_database WHERE datname='$DB_NAME'\" | grep -q 1 || \
     psql -c \"CREATE DATABASE $DB_NAME OWNER $DB_USER;\"
 "
