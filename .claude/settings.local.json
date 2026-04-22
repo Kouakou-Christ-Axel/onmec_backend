@@ -22,7 +22,15 @@
       "Bash(pnpm install *)",
       "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('pnpm', {}\\), indent=2\\)\\)\")",
       "mcp__MCP_DOCKER__mcp-find",
-      "mcp__MCP_DOCKER__mcp-add"
+      "mcp__MCP_DOCKER__mcp-add",
+      "Bash(mkdir -p /c/Users/kouax/WebstormProjects/onmec_backend/logs)",
+      "Bash(touch /c/Users/kouax/WebstormProjects/onmec_backend/logs/.gitkeep)",
+      "Bash(chmod +x *)",
+      "Bash(bash -n /c/Users/kouax/WebstormProjects/onmec_backend/scripts/setup-vps.sh)",
+      "Bash(bash *)",
+      "Bash(python3 -c \"import yaml; yaml.safe_load\\(open\\('C:/Users/kouax/WebstormProjects/onmec_backend/.github/workflows/deploy.yml'\\)\\)\")",
+      "Bash(npm -v)",
+      "Bash(/c/nvm4w/nodejs/pnpm build *)"
     ]
   }
 }
