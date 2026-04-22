@@ -104,23 +104,23 @@ jobs:
             set -e
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh" || { echo "nvm introuvable"; exit 1; }
+            nvm use default
             cd /var/www/onmec/backend
 
-            # Backup dist for rollback
-            cp -r dist dist_backup 2>/dev/null || true
+            # Backup dist for rollback (ignoré si premier déploiement)
+            [ -d dist ] && cp -r dist dist_backup || true
 
             # Build
             if ! npx prisma generate || ! pnpm build; then
               echo "Build failed — restoring previous dist"
-              rm -rf dist && mv dist_backup dist 2>/dev/null || true
+              [ -d dist_backup ] && rm -rf dist && mv dist_backup dist || true
               exit 1
             fi
 
             # Reload with rollback on failure
             if ! pm2 reload ecosystem.config.js --env production; then
               echo "Reload failed — restoring previous dist"
-              rm -rf dist && mv dist_backup dist
-              pm2 reload ecosystem.config.js --env production
+              [ -d dist_backup ] && rm -rf dist && mv dist_backup dist && pm2 reload ecosystem.config.js --env production || true
               exit 1
             fi
 
