@@ -38,9 +38,34 @@ jobs:
       - name: Run tests
         run: pnpm test
 
+  migrate:
+    name: Migrate
+    needs: ci
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    timeout-minutes: 10
+
+    steps:
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_KEY }}
+
+      - name: Apply migrations on VPS
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'ENDSSH'
+            set -e
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh" || { echo "nvm introuvable"; exit 1; }
+            cd ~/onmec_backend
+            git pull origin master
+            pnpm install --frozen-lockfile
+            npx prisma migrate deploy
+          ENDSSH
+
   deploy:
     name: Deploy
-    needs: ci
+    needs: migrate
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     timeout-minutes: 30
@@ -59,9 +84,6 @@ jobs:
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh" || { echo "nvm introuvable"; exit 1; }
             cd ~/onmec_backend
-            git pull origin master
-            pnpm install --frozen-lockfile
-            npx prisma migrate deploy
             npx prisma generate
             pnpm build
             pm2 reload ecosystem.config.js --env production
