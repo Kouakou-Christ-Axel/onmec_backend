@@ -8,7 +8,7 @@ set -e
 # ============================================================
 
 APP_USER="onmec"
-APP_DIR="/home/$APP_USER/onmec_backend"
+APP_DIR="/var/www/onmec/backend"
 DB_NAME="onmec"
 DB_USER="onmec_user"
 NODE_VERSION="22"

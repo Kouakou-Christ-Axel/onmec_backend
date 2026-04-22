@@ -57,7 +57,7 @@ jobs:
             set -e
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh" || { echo "nvm introuvable"; exit 1; }
-            cd ~/onmec_backend
+            cd /var/www/onmec/backend
             git pull origin master
             pnpm install --frozen-lockfile
             npx prisma migrate deploy
@@ -83,7 +83,7 @@ jobs:
             set -e
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh" || { echo "nvm introuvable"; exit 1; }
-            cd ~/onmec_backend
+            cd /var/www/onmec/backend
             npx prisma generate
             pnpm build
             pm2 reload ecosystem.config.js --env production
