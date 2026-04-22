@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: 'onmec-api',
-      script: 'dist/main.js',
+      script: 'dist/src/main.js',
       exec_mode: 'cluster',
       instances: 'max',
       env_production: {
