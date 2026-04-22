@@ -48,7 +48,7 @@ jobs:
 
       - name: Generate Prisma client
         if: steps.prisma-cache.outputs.cache-hit != 'true'
-        run: npx prisma generate
+        run: pnpm exec prisma generate
         env:
           DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
 
@@ -81,7 +81,7 @@ jobs:
             cd "$APP_DIR"
             git pull origin master
             pnpm install --frozen-lockfile
-            npx prisma migrate deploy
+            pnpm exec prisma migrate deploy
           ENDSSH
 
   deploy:
@@ -111,7 +111,7 @@ jobs:
             [ -d dist ] && cp -r dist dist_backup || true
 
             # Build
-            if ! npx prisma generate || ! pnpm build; then
+            if ! pnpm exec prisma generate || ! pnpm build; then
               echo "Build failed — restoring previous dist"
               [ -d dist_backup ] && rm -rf dist && mv dist_backup dist || true
               exit 1
