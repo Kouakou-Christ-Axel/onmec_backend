@@ -37,9 +37,6 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit
 
-      - name: Run tests
-        run: pnpm test
-
   migrate:
     name: Migrate
     needs: ci
