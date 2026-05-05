@@ -28,7 +28,7 @@ import {
 import { LibrairieService } from './librairie.service';
 import { CreateDocumentDto, DocumentFilesDto } from './dto/create-document.dto';
 import { UpdateDocumentDto } from './dto/update-document.dto';
-import { DocumentResponseDto } from './dto/document-response.dto';
+import { DocumentResponseDto, PublicDocumentResponseDto } from './dto/document-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
@@ -82,6 +82,30 @@ export class LibrairieController {
   })
   findAll(@Query() searchParams: SearchDocumentDto) {
     return this.librairieService.findAll(searchParams);
+  }
+
+  @Get('public')
+  @ApiOperation({ summary: 'Liste publique des documents', description: 'Retourne les documents paginés sans données sensibles. Aucune authentification requise.' })
+  @ApiOkResponse({
+    description: 'Liste paginée de documents publics',
+    schema: {
+      allOf: [
+        { $ref: '#/components/schemas/PaginatedResponseDto' },
+        { properties: { data: { type: 'array', items: { $ref: '#/components/schemas/PublicDocumentResponseDto' } } } },
+      ],
+    },
+  })
+  findAllPublic(@Query() searchParams: SearchDocumentDto) {
+    return this.librairieService.findAllPublic(searchParams);
+  }
+
+  @Get('public/:id')
+  @ApiOperation({ summary: 'Détail public d\'un document', description: 'Retourne les informations publiques d\'un document sans données sensibles. Aucune authentification requise.' })
+  @ApiParam({ name: 'id', description: 'Identifiant du document', example: '550e8400-e29b-41d4-a716-446655440000' })
+  @ApiOkResponse({ description: 'Document trouvé', type: PublicDocumentResponseDto })
+  @ApiNotFoundResponse({ description: 'Document non trouvé' })
+  findOnePublic(@Param('id') id: string) {
+    return this.librairieService.findOnePublic(id);
   }
 
   @Get(':id')

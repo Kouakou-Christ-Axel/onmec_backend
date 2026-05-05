@@ -7,7 +7,7 @@ import * as path from 'path';
 import {join} from 'path';
 import {SearchDocumentDto} from './dto/search-document.dto';
 import {ConfigService} from "@nestjs/config";
-import {DocumentResponseDto, PaginatedResponse} from './dto/document-response.dto';
+import {DocumentResponseDto, PaginatedResponse, PublicDocumentResponseDto} from './dto/document-response.dto';
 
 @Injectable()
 export class LibrairieService {
@@ -151,6 +151,79 @@ export class LibrairieService {
 		}
 
 		return this.documentToDto(document);
+	}
+
+	async findAllPublic(search: SearchDocumentDto): Promise<PaginatedResponse<PublicDocumentResponseDto>> {
+		const {limit = 10, page = 1} = search;
+
+		const where = {
+			title: search.title
+				? {contains: search.title, mode: 'insensitive' as const}
+				: undefined,
+		};
+
+		const total = await this.prisma.document.count({where});
+
+		const documents = await this.prisma.document.findMany({
+			where,
+			include: {
+				uploadedBy: {
+					select: {fullname: true},
+				},
+			},
+			orderBy: {uploadedAt: 'desc'},
+			skip: (page - 1) * limit,
+			take: limit,
+		});
+
+		const backendUrl = this.configService.get<string>('BACKEND_URL');
+		return {
+			data: documents.map(doc => ({
+				id: doc.id,
+				title: doc.title,
+				description: doc.description,
+				fileType: doc.fileType,
+				fileUrl: `${backendUrl}/api/v1/librairie/${doc.id}/file`,
+				coverImage: doc.coverImage ? `${backendUrl}${doc.coverImage}` : null,
+				uploadedAt: doc.uploadedAt,
+				auteur: doc.uploadedBy?.fullname ?? '',
+			})),
+			meta: {
+				total,
+				page,
+				limit,
+				totalPages: Math.ceil(total / limit),
+			},
+		};
+	}
+
+	async findOnePublic(id: string): Promise<PublicDocumentResponseDto> {
+		const document = await this.prisma.document.findUnique({
+			where: {id},
+			include: {
+				uploadedBy: {
+					select: {
+						fullname: true,
+					},
+				},
+			},
+		});
+
+		if (!document) {
+			throw new NotFoundException(`Document avec l'ID ${id} non trouvé`);
+		}
+
+		const backendUrl = this.configService.get<string>('BACKEND_URL');
+		return {
+			id: document.id,
+			title: document.title,
+			description: document.description,
+			fileType: document.fileType,
+			fileUrl: `${backendUrl}/api/v1/librairie/${document.id}/file`,
+			coverImage: document.coverImage ? `${backendUrl}${document.coverImage}` : null,
+			uploadedAt: document.uploadedAt,
+			auteur: document.uploadedBy?.fullname ?? '',
+		};
 	}
 
 	async getFile(id: string) {

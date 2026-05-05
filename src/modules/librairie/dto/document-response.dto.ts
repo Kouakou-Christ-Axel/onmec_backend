@@ -30,6 +30,32 @@ export class DocumentResponseDto {
   };
 }
 
+export class PublicDocumentResponseDto {
+  @ApiProperty({ description: "ID du document", example: "550e8400-e29b-41d4-a716-446655440000" })
+  id: string;
+
+  @ApiProperty({ description: "Titre du document", example: "Le Petit Prince" })
+  title: string;
+
+  @ApiProperty({ description: "Description du document", nullable: true })
+  description: string | null;
+
+  @ApiProperty({ description: "Type de fichier", example: ".pdf" })
+  fileType: string;
+
+  @ApiProperty({ description: "URL pour télécharger le fichier" })
+  fileUrl: string;
+
+  @ApiProperty({ description: "URL de la couverture", nullable: true })
+  coverImage: string | null;
+
+  @ApiProperty({ description: "Date d'upload" })
+  uploadedAt: Date;
+
+  @ApiProperty({ description: "Nom de l'auteur du document", example: "Jean Dupont" })
+  auteur: string;
+}
+
 export interface PaginatedResponse<T> {
   data: T[];
   meta: {
