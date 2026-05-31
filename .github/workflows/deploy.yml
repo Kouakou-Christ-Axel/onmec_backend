@@ -13,7 +13,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -21,20 +21,10 @@ jobs:
           version: '10'
 
       - name: Setup Node.js 22
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
-
-      - name: Get pnpm store path
-        id: pnpm-cache
-        run: echo "store=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-      - name: Cache pnpm store
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.store }}
-          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: pnpm-${{ runner.os }}-
+          cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -54,6 +44,9 @@ jobs:
 
       - name: Type check
         run: npx tsc --noEmit
+
+      - name: Lint
+        run: pnpm lint
 
   migrate:
     name: Migrate
@@ -107,17 +100,14 @@ jobs:
             nvm use default
             cd /var/www/onmec/backend
 
-            # Backup dist for rollback (ignoré si premier déploiement)
             [ -d dist ] && cp -r dist dist_backup || true
 
-            # Build
             if ! pnpm exec prisma generate || ! pnpm build; then
               echo "Build failed — restoring previous dist"
               [ -d dist_backup ] && rm -rf dist && mv dist_backup dist || true
               exit 1
             fi
 
-            # Reload with rollback on failure
             if ! pm2 reload ecosystem.config.js --env production; then
               echo "Reload failed — restoring previous dist"
               [ -d dist_backup ] && rm -rf dist && mv dist_backup dist && pm2 reload ecosystem.config.js --env production || true
@@ -126,7 +116,6 @@ jobs:
 
             rm -rf dist_backup
 
-            # Health check
             sleep 5
             if ! pm2 list | grep -q "onmec-api.*online"; then
               echo "App not online after deploy"
