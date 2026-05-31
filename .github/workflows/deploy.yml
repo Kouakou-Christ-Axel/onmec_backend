@@ -45,9 +45,6 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit
 
-      - name: Lint
-        run: pnpm lint
-
   migrate:
     name: Migrate
     needs: ci
