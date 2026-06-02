@@ -14,6 +14,7 @@ import { SignalementCitoyenModule } from './modules/signalement-citoyen/signalem
 import { QuizzModule } from './modules/quizz/quizz.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { ActualitesModule } from './modules/actualites/actualites.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { ActualitesModule } from './modules/actualites/actualites.module';
     QuizzModule,
     NotificationModule,
     ActualitesModule,
+    HealthModule,
   ],
 })
 export class AppModule {}

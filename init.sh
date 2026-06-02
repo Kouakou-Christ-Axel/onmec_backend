@@ -2,5 +2,5 @@
 set -e
 
 echo "=== Starting application ==="
-pnpm run db:deploy
+/app/node_modules/.bin/prisma migrate deploy
 exec "$@"
