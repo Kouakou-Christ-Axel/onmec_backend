@@ -46,7 +46,7 @@ jobs:
         run: npx tsc --noEmit
 
   migrate:
-    name: Migrate
+    name: Migrate & Seed
     needs: ci
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
@@ -58,7 +58,7 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_KEY }}
 
-      - name: Apply migrations on VPS
+      - name: Apply migrations and seed on VPS
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'ENDSSH'
             set -e
@@ -72,6 +72,7 @@ jobs:
             git pull origin master
             pnpm install --frozen-lockfile
             pnpm exec prisma migrate deploy
+            pnpm exec prisma db seed
           ENDSSH
 
   deploy:
