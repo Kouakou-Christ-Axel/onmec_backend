@@ -1,12 +1,25 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PrismaService } from 'src/database/services/prisma.service';
 import * as bcrypt from 'bcryptjs';
 import { Request } from 'express';
 import { User, UserRole } from '@prisma/client';
 import { LoginUserDto } from 'src/modules/auth/dto/login-user.dto';
 import { JsonWebTokenService } from 'src/json-web-token/json-web-token.service';
-import { permissionsByRole, RolePermissions, } from 'src/common/constantes/permissionsByRole';
+import { permissionsByRole, RolePermissions } from 'src/common/constantes/permissionsByRole';
 import { RegisterUserDto } from '../dto/register-user.dto';
+import { VerifyEmailOtpDto } from '../dto/verify-email-otp.dto';
+import { ResendEmailOtpDto } from '../dto/resend-email-otp.dto';
+import { EmailService } from './email.service';
+import { totp, authenticator } from 'otplib';
+
+// Durée de validité de l'OTP email : 10 minutes
+const OTP_STEP_SECONDS = 600;
 
 export interface TokenResponse {
   token: string;
@@ -17,9 +30,14 @@ export interface AuthResponse extends TokenResponse {
   id: string;
   email: string;
   fullname: string;
-  phone?: string|null;
+  phone?: string | null;
   role: UserRole;
   permissions: RolePermissions;
+}
+
+export interface OtpSentResponse {
+  message: string;
+  email: string;
 }
 
 @Injectable()
@@ -29,53 +47,47 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jsonWebTokenService: JsonWebTokenService,
+    private readonly emailService: EmailService,
   ) {}
 
-  /**
-   * Génère les tokens (JWT et Refresh) pour un utilisateur
-   * @param userId - ID de l'utilisateur
-   * @returns Promise contenant le token et le refreshToken
-   */
   private async generateTokens(userId: string): Promise<TokenResponse> {
     try {
       const token = await this.jsonWebTokenService.generateToken(userId);
-      const refreshToken =
-        await this.jsonWebTokenService.generateRefreshToken(userId);
-
+      const refreshToken = await this.jsonWebTokenService.generateRefreshToken(userId);
       return { token, refreshToken };
     } catch (error) {
       this.logger.error('Erreur lors de la génération des tokens', error);
-      throw new BadRequestException(
-        'Impossible de générer les tokens d\'authentification',
-      );
+      throw new BadRequestException("Impossible de générer les tokens d'authentification");
     }
   }
 
-  /**
-   * Prépare la réponse d'authentification avec les informations de l'utilisateur
-   * @param user - Utilisateur depuis la BD
-   * @param tokens - Tokens générés
-   * @returns Réponse d'authentification formatée
-   */
   private buildAuthResponse(user: User, tokens: TokenResponse): AuthResponse {
-    const rolePermissions = permissionsByRole[user.role as UserRole] || [];
-
     return {
       id: user.id,
       email: user.email,
       fullname: user.fullname,
       phone: user.phone,
       role: user.role,
-      permissions: rolePermissions,
+      permissions: permissionsByRole[user.role as UserRole] || [],
       token: tokens.token,
       refreshToken: tokens.refreshToken,
     };
   }
 
+  private generateEmailOtp(): { secret: string; otp: string } {
+    const secret = authenticator.generateSecret(20);
+    totp.options = { step: OTP_STEP_SECONDS, digits: 6, window: 1 };
+    const otp = totp.generate(secret);
+    return { secret, otp };
+  }
+
+  private checkOtp(secret: string, otp: string): boolean {
+    totp.options = { step: OTP_STEP_SECONDS, digits: 6, window: 1 };
+    return totp.verify({ token: otp, secret });
+  }
+
   /**
-   * Connexion d'un utilisateur
-   * @param loginUserDto - Email et mot de passe
-   * @returns AuthResponse avec tokens et informations utilisateur
+   * Connexion — bloque si l'email n'est pas encore vérifié
    */
   async login(loginUserDto: LoginUserDto): Promise<AuthResponse> {
     try {
@@ -84,128 +96,173 @@ export class AuthService {
         message: `Tentative de connexion pour: ${loginUserDto.email}`,
       });
 
-      // Récupérer l'utilisateur
       const user = await this.prisma.user.findUnique({
         where: { email: loginUserDto.email },
       });
 
       if (!user) {
-        this.logger.warn({
-          action: 'LOGIN_FAILED',
-          reason: 'USER_NOT_FOUND',
-          email: loginUserDto.email,
-        });
         throw new NotFoundException('Utilisateur non trouvé');
       }
 
-      // Vérifier le mot de passe
-      const isPasswordValid = await bcrypt.compare(
-        loginUserDto.password,
-        user.password,
-      );
-
+      const isPasswordValid = await bcrypt.compare(loginUserDto.password, user.password);
       if (!isPasswordValid) {
-        this.logger.warn({
-          action: 'LOGIN_FAILED',
-          reason: 'INVALID_PASSWORD',
-          email: loginUserDto.email,
-        });
         throw new BadRequestException('Mot de passe invalide');
       }
 
-      // Générer les tokens
+      if (!user.emailVerified) {
+        throw new UnauthorizedException(
+          'Veuillez vérifier votre adresse email avant de vous connecter',
+        );
+      }
+
       const tokens = await this.generateTokens(user.id);
 
-      // Construire et retourner la réponse
-      const authResponse = this.buildAuthResponse(user, tokens);
+      this.logger.log({ action: 'LOGIN_SUCCESS', userId: user.id, email: user.email });
 
-      this.logger.log({
-        action: 'LOGIN_SUCCESS',
-        userId: user.id,
-        email: user.email,
-      });
-
-      return authResponse;
+      return this.buildAuthResponse(user, tokens);
     } catch (error) {
       if (
         error instanceof NotFoundException ||
-        error instanceof BadRequestException
+        error instanceof BadRequestException ||
+        error instanceof UnauthorizedException
       ) {
         throw error;
       }
-
       this.logger.error('Erreur lors de la connexion', error);
       throw new BadRequestException('Erreur lors de la connexion');
     }
   }
 
   /**
-   * Enregistrement d'un nouvel utilisateur
-   * @param registerUserDto - Email, mot de passe et informations
-   * @returns AuthResponse avec tokens et informations utilisateur
+   * Inscription — crée un compte non vérifié et envoie un OTP par email
    */
-  async register(registerUserDto: RegisterUserDto): Promise<AuthResponse> {
+  async register(registerUserDto: RegisterUserDto): Promise<OtpSentResponse> {
     try {
       this.logger.log({
         action: 'REGISTER',
         message: `Tentative d'enregistrement pour: ${registerUserDto.email}`,
       });
 
-      // Vérifier si l'utilisateur existe déjà
       const existingUser = await this.prisma.user.findUnique({
         where: { email: registerUserDto.email },
       });
 
       if (existingUser) {
-        this.logger.warn({
-          action: 'REGISTER_FAILED',
-          reason: 'USER_ALREADY_EXISTS',
-          email: registerUserDto.email,
-        });
         throw new BadRequestException('Cet email est déjà utilisé');
       }
 
-      // Hasher le mot de passe
       const hashedPassword = await bcrypt.hash(registerUserDto.password, 10);
+      const { secret, otp } = this.generateEmailOtp();
 
-      // Créer le nouvel utilisateur
       const newUser = await this.prisma.user.create({
         data: {
           email: registerUserDto.email,
           password: hashedPassword,
           fullname: registerUserDto.fullname,
           phone: registerUserDto.phone,
-          role: UserRole.MEMBER, // Rôle par défaut
+          role: UserRole.MEMBER,
+          emailVerified: false,
+          otpSecret: secret,
         },
       });
 
-      // Générer les tokens
-      const tokens = await this.generateTokens(newUser.id);
+      await this.emailService.sendEmailVerificationOtp(newUser.email, newUser.fullname, otp);
 
-      // Construire et retourner la réponse
-      const authResponse = this.buildAuthResponse(newUser, tokens);
+      this.logger.log({ action: 'REGISTER_SUCCESS', userId: newUser.id, email: newUser.email });
 
-      this.logger.log({
-        action: 'REGISTER_SUCCESS',
-        userId: newUser.id,
+      return {
+        message: 'Un code de vérification a été envoyé à votre adresse email',
         email: newUser.email,
-      });
-
-      return authResponse;
+      };
     } catch (error) {
       if (error instanceof BadRequestException) {
         throw error;
       }
+      this.logger.error("Erreur lors de l'enregistrement", error);
+      throw new BadRequestException("Erreur lors de l'enregistrement");
+    }
+  }
 
-      this.logger.error('Erreur lors de l\'enregistrement', error);
-      throw new BadRequestException('Erreur lors de l\'enregistrement');
+  /**
+   * Vérifie le code OTP reçu par email et retourne les tokens si valide
+   */
+  async verifyEmail(dto: VerifyEmailOtpDto): Promise<AuthResponse> {
+    try {
+      const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+
+      if (!user) {
+        throw new NotFoundException('Utilisateur non trouvé');
+      }
+
+      if (user.emailVerified) {
+        throw new BadRequestException('Cet email est déjà vérifié');
+      }
+
+      if (!user.otpSecret) {
+        throw new BadRequestException(
+          'Aucun code en attente — utilisez /auth/resend-email-otp pour en obtenir un nouveau',
+        );
+      }
+
+      if (!this.checkOtp(user.otpSecret, dto.otp)) {
+        throw new BadRequestException('Code OTP invalide ou expiré');
+      }
+
+      const verifiedUser = await this.prisma.user.update({
+        where: { id: user.id },
+        data: { emailVerified: true, otpSecret: null },
+      });
+
+      const tokens = await this.generateTokens(verifiedUser.id);
+
+      this.logger.log({ action: 'EMAIL_VERIFIED', userId: user.id, email: user.email });
+
+      return this.buildAuthResponse(verifiedUser, tokens);
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      this.logger.error('Erreur lors de la vérification email', error);
+      throw new BadRequestException('Erreur lors de la vérification');
+    }
+  }
+
+  /**
+   * Renvoie un nouveau code OTP à l'email donné
+   */
+  async resendEmailOtp(dto: ResendEmailOtpDto): Promise<{ message: string }> {
+    try {
+      const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+
+      if (!user) {
+        throw new NotFoundException('Utilisateur non trouvé');
+      }
+
+      if (user.emailVerified) {
+        throw new BadRequestException('Cet email est déjà vérifié');
+      }
+
+      const { secret, otp } = this.generateEmailOtp();
+
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { otpSecret: secret },
+      });
+
+      await this.emailService.sendEmailVerificationOtp(user.email, user.fullname, otp);
+
+      return { message: 'Un nouveau code de vérification a été envoyé à votre adresse email' };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      this.logger.error("Erreur lors du renvoi de l'OTP", error);
+      throw new BadRequestException('Erreur lors du renvoi du code');
     }
   }
 
   /**
    * Rafraîchit le token JWT
-   * @param req - Requête contenant l'utilisateur authentifié
-   * @returns Nouveaux tokens
    */
   async refreshToken(req: Request): Promise<TokenResponse> {
     try {
@@ -215,22 +272,15 @@ export class AuthService {
         throw new BadRequestException('Utilisateur non authentifié');
       }
 
-      this.logger.log({
-        action: 'REFRESH_TOKEN',
-        userId: user.id,
-      });
+      this.logger.log({ action: 'REFRESH_TOKEN', userId: user.id });
 
       return await this.generateTokens(user.id);
-
     } catch (error) {
       if (error instanceof BadRequestException) {
         throw error;
       }
-
       this.logger.error('Erreur lors du rafraîchissement du token', error);
-      throw new BadRequestException(
-        'Erreur lors du rafraîchissement du token',
-      );
+      throw new BadRequestException('Erreur lors du rafraîchissement du token');
     }
   }
 }

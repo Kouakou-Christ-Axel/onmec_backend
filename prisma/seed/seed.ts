@@ -92,7 +92,7 @@ async function main() {
   // ── USERS ────────────────────────────────────────────────────────────────────
   await prisma.user.upsert({
     where: { email: 'admin@agence.ci' },
-    update: {},
+    update: { emailVerified: true },
     create: {
       id: ID.users.admin,
       fullname: 'Admin Principal',
@@ -100,12 +100,13 @@ async function main() {
       password: hash,
       role: 'ADMIN',
       phone: '+2250101010101',
+      emailVerified: true,
     },
   });
 
   await prisma.user.upsert({
     where: { email: 'kouame.jean@citoyen.ci' },
-    update: {},
+    update: { emailVerified: true },
     create: {
       id: ID.users.member1,
       fullname: 'Kouamé Jean',
@@ -113,12 +114,13 @@ async function main() {
       password: hash,
       role: 'MEMBER',
       phone: '+2250707070701',
+      emailVerified: true,
     },
   });
 
   await prisma.user.upsert({
     where: { email: 'aya.fatou@citoyen.ci' },
-    update: {},
+    update: { emailVerified: true },
     create: {
       id: ID.users.member2,
       fullname: 'Aya Fatou',
@@ -126,6 +128,7 @@ async function main() {
       password: hash,
       role: 'MEMBER',
       phone: '+2250707070702',
+      emailVerified: true,
     },
   });
 
@@ -219,285 +222,106 @@ async function main() {
 
   console.log('✅ Quiz seeded');
 
-  // ── QUESTIONS (correctId pointe vers le bon Choice UUID, sans contrainte FK) ──
+  // ── QUESTIONS ─────────────────────────────────────────────────────────────────
   const questionsData = [
-    // Quiz 1 — Citoyenneté
-    {
-      id: ID.questions.q1q1,
-      text: "Quel est le rôle principal d'un citoyen dans une démocratie ?",
-      quizId: ID.quiz.q1,
-      correctId: ID.choices.q1q1c2,
-    },
-    {
-      id: ID.questions.q1q2,
-      text: "À quel âge peut-on voter en Côte d'Ivoire ?",
-      quizId: ID.quiz.q1,
-      correctId: ID.choices.q1q2c1,
-    },
-    {
-      id: ID.questions.q1q3,
-      text: "Qu'est-ce que la laïcité ?",
-      quizId: ID.quiz.q1,
-      correctId: ID.choices.q1q3c3,
-    },
-    // Quiz 2 — Histoire
-    {
-      id: ID.questions.q2q1,
-      text: "En quelle année la Côte d'Ivoire a-t-elle accédé à l'indépendance ?",
-      quizId: ID.quiz.q2,
-      correctId: ID.choices.q2q1c4,
-    },
-    {
-      id: ID.questions.q2q2,
-      text: "Quelle est la capitale économique de la Côte d'Ivoire ?",
-      quizId: ID.quiz.q2,
-      correctId: ID.choices.q2q2c2,
-    },
-    {
-      id: ID.questions.q2q3,
-      text: "Qui est considéré comme le père de la nation ivoirienne ?",
-      quizId: ID.quiz.q2,
-      correctId: ID.choices.q2q3c1,
-    },
+    { id: ID.questions.q1q1, text: "Quel est le rôle principal d'un citoyen dans une démocratie ?", quizId: ID.quiz.q1, correctId: ID.choices.q1q1c2 },
+    { id: ID.questions.q1q2, text: "À quel âge peut-on voter en Côte d'Ivoire ?", quizId: ID.quiz.q1, correctId: ID.choices.q1q2c1 },
+    { id: ID.questions.q1q3, text: "Qu'est-ce que la laïcité ?", quizId: ID.quiz.q1, correctId: ID.choices.q1q3c3 },
+    { id: ID.questions.q2q1, text: "En quelle année la Côte d'Ivoire a-t-elle accédé à l'indépendance ?", quizId: ID.quiz.q2, correctId: ID.choices.q2q1c4 },
+    { id: ID.questions.q2q2, text: "Quelle est la capitale économique de la Côte d'Ivoire ?", quizId: ID.quiz.q2, correctId: ID.choices.q2q2c2 },
+    { id: ID.questions.q2q3, text: "Qui est considéré comme le père de la nation ivoirienne ?", quizId: ID.quiz.q2, correctId: ID.choices.q2q3c1 },
   ];
 
   for (const q of questionsData) {
-    await prisma.question.upsert({
-      where: { id: q.id },
-      update: {},
-      create: q,
-    });
+    await prisma.question.upsert({ where: { id: q.id }, update: {}, create: q });
   }
 
   console.log('✅ Questions seeded');
 
   // ── CHOICES ───────────────────────────────────────────────────────────────────
   const choicesData = [
-    // Q1Q1
-    { id: ID.choices.q1q1c1, text: 'Payer ses impôts uniquement',                         questionId: ID.questions.q1q1 },
-    { id: ID.choices.q1q1c2, text: 'Participer activement à la vie politique et sociale',  questionId: ID.questions.q1q1 },
-    { id: ID.choices.q1q1c3, text: 'Obéir aux autorités sans questionner',                 questionId: ID.questions.q1q1 },
-    { id: ID.choices.q1q1c4, text: 'Rester neutre dans les affaires publiques',            questionId: ID.questions.q1q1 },
-    // Q1Q2
+    { id: ID.choices.q1q1c1, text: 'Payer ses impôts uniquement', questionId: ID.questions.q1q1 },
+    { id: ID.choices.q1q1c2, text: 'Participer activement à la vie politique et sociale', questionId: ID.questions.q1q1 },
+    { id: ID.choices.q1q1c3, text: 'Obéir aux autorités sans questionner', questionId: ID.questions.q1q1 },
+    { id: ID.choices.q1q1c4, text: 'Rester neutre dans les affaires publiques', questionId: ID.questions.q1q1 },
     { id: ID.choices.q1q2c1, text: '18 ans', questionId: ID.questions.q1q2 },
     { id: ID.choices.q1q2c2, text: '16 ans', questionId: ID.questions.q1q2 },
     { id: ID.choices.q1q2c3, text: '21 ans', questionId: ID.questions.q1q2 },
     { id: ID.choices.q1q2c4, text: '25 ans', questionId: ID.questions.q1q2 },
-    // Q1Q3
-    { id: ID.choices.q1q3c1, text: "La pratique d'une religion unique",         questionId: ID.questions.q1q3 },
-    { id: ID.choices.q1q3c2, text: "L'interdiction de toute religion",           questionId: ID.questions.q1q3 },
-    { id: ID.choices.q1q3c3, text: "La séparation de l'État et des religions",   questionId: ID.questions.q1q3 },
-    { id: ID.choices.q1q3c4, text: "L'obligation de pratiquer une religion",     questionId: ID.questions.q1q3 },
-    // Q2Q1
+    { id: ID.choices.q1q3c1, text: "La pratique d'une religion unique", questionId: ID.questions.q1q3 },
+    { id: ID.choices.q1q3c2, text: "L'interdiction de toute religion", questionId: ID.questions.q1q3 },
+    { id: ID.choices.q1q3c3, text: "La séparation de l'État et des religions", questionId: ID.questions.q1q3 },
+    { id: ID.choices.q1q3c4, text: "L'obligation de pratiquer une religion", questionId: ID.questions.q1q3 },
     { id: ID.choices.q2q1c1, text: '1945', questionId: ID.questions.q2q1 },
     { id: ID.choices.q2q1c2, text: '1955', questionId: ID.questions.q2q1 },
     { id: ID.choices.q2q1c3, text: '1958', questionId: ID.questions.q2q1 },
     { id: ID.choices.q2q1c4, text: '1960', questionId: ID.questions.q2q1 },
-    // Q2Q2
     { id: ID.choices.q2q2c1, text: 'Yamoussoukro', questionId: ID.questions.q2q2 },
-    { id: ID.choices.q2q2c2, text: 'Abidjan',       questionId: ID.questions.q2q2 },
-    { id: ID.choices.q2q2c3, text: 'Bouaké',         questionId: ID.questions.q2q2 },
-    { id: ID.choices.q2q2c4, text: 'San-Pédro',      questionId: ID.questions.q2q2 },
-    // Q2Q3
+    { id: ID.choices.q2q2c2, text: 'Abidjan', questionId: ID.questions.q2q2 },
+    { id: ID.choices.q2q2c3, text: 'Bouaké', questionId: ID.questions.q2q2 },
+    { id: ID.choices.q2q2c4, text: 'San-Pédro', questionId: ID.questions.q2q2 },
     { id: ID.choices.q2q3c1, text: 'Félix Houphouët-Boigny', questionId: ID.questions.q2q3 },
-    { id: ID.choices.q2q3c2, text: 'Laurent Gbagbo',          questionId: ID.questions.q2q3 },
-    { id: ID.choices.q2q3c3, text: 'Alassane Ouattara',       questionId: ID.questions.q2q3 },
-    { id: ID.choices.q2q3c4, text: 'Henri Konan Bédié',       questionId: ID.questions.q2q3 },
+    { id: ID.choices.q2q3c2, text: 'Laurent Gbagbo', questionId: ID.questions.q2q3 },
+    { id: ID.choices.q2q3c3, text: 'Alassane Ouattara', questionId: ID.questions.q2q3 },
+    { id: ID.choices.q2q3c4, text: 'Henri Konan Bédié', questionId: ID.questions.q2q3 },
   ];
 
   for (const c of choicesData) {
-    await prisma.choice.upsert({
-      where: { id: c.id },
-      update: {},
-      create: c,
-    });
+    await prisma.choice.upsert({ where: { id: c.id }, update: {}, create: c });
   }
 
   console.log('✅ Choices seeded');
 
   // ── SIGNALEMENTS CITOYENS ─────────────────────────────────────────────────────
   const signalementsData = [
-    {
-      id: ID.sigs.s1,
-      titre: 'Nid de poule dangereux avenue Chardy',
-      description: "Un nid de poule de grande taille obstrue la voie et cause des accidents. Présent depuis plus de 2 semaines.",
-      categorieId: ID.catSig.voirie,
-      adresse: 'Avenue Chardy, Plateau, Abidjan',
-      latitude: 5.3192,
-      longitude: -4.0167,
-      statut: 'NOUVEAU' as const,
-      citoyenId: ID.users.member1,
-      validation: false,
-    },
-    {
-      id: ID.sigs.s2,
-      titre: "Dépôt sauvage d'ordures rue des Jardins",
-      description: "Un dépôt de déchets ménagers non collectés depuis 3 jours crée des nuisances olfactives.",
-      categorieId: ID.catSig.environnement,
-      adresse: 'Rue des Jardins, Cocody, Abidjan',
-      latitude: 5.3714,
-      longitude: -3.9866,
-      statut: 'EN_COURS' as const,
-      citoyenId: ID.users.member2,
-      validation: true,
-    },
-    {
-      id: ID.sigs.s3,
-      titre: 'Lampadaire éteint — zone non éclairée',
-      description: "Un lampadaire est défaillant depuis une semaine, rendant la zone dangereuse la nuit.",
-      categorieId: ID.catSig.securite,
-      adresse: 'Boulevard Latrille, Cocody, Abidjan',
-      latitude: 5.3620,
-      longitude: -3.9960,
-      statut: 'RESOLU' as const,
-      citoyenId: ID.users.member1,
-      validation: true,
-    },
-    {
-      id: ID.sigs.s4,
-      titre: 'Inondation récurrente au carrefour Deux Plateaux',
-      description: "Les eaux de pluie s'accumulent à cet endroit à chaque forte pluie, bloquant la circulation.",
-      categorieId: ID.catSig.environnement,
-      adresse: 'Carrefour Deux Plateaux, Cocody, Abidjan',
-      latitude: 5.3800,
-      longitude: -3.9850,
-      statut: 'NOUVEAU' as const,
-      citoyenId: ID.users.member2,
-      validation: false,
-    },
+    { id: ID.sigs.s1, titre: 'Nid de poule dangereux avenue Chardy', description: "Un nid de poule de grande taille obstrue la voie et cause des accidents. Présent depuis plus de 2 semaines.", categorieId: ID.catSig.voirie, adresse: 'Avenue Chardy, Plateau, Abidjan', latitude: 5.3192, longitude: -4.0167, statut: 'NOUVEAU' as const, citoyenId: ID.users.member1, validation: false },
+    { id: ID.sigs.s2, titre: "Dépôt sauvage d'ordures rue des Jardins", description: "Un dépôt de déchets ménagers non collectés depuis 3 jours crée des nuisances olfactives.", categorieId: ID.catSig.environnement, adresse: 'Rue des Jardins, Cocody, Abidjan', latitude: 5.3714, longitude: -3.9866, statut: 'EN_COURS' as const, citoyenId: ID.users.member2, validation: true },
+    { id: ID.sigs.s3, titre: 'Lampadaire éteint — zone non éclairée', description: "Un lampadaire est défaillant depuis une semaine, rendant la zone dangereuse la nuit.", categorieId: ID.catSig.securite, adresse: 'Boulevard Latrille, Cocody, Abidjan', latitude: 5.3620, longitude: -3.9960, statut: 'RESOLU' as const, citoyenId: ID.users.member1, validation: true },
+    { id: ID.sigs.s4, titre: 'Inondation récurrente au carrefour Deux Plateaux', description: "Les eaux de pluie s'accumulent à cet endroit à chaque forte pluie, bloquant la circulation.", categorieId: ID.catSig.environnement, adresse: 'Carrefour Deux Plateaux, Cocody, Abidjan', latitude: 5.3800, longitude: -3.9850, statut: 'NOUVEAU' as const, citoyenId: ID.users.member2, validation: false },
   ];
 
   for (const s of signalementsData) {
-    await prisma.signalementCitoyen.upsert({
-      where: { id: s.id },
-      update: {},
-      create: s,
-    });
+    await prisma.signalementCitoyen.upsert({ where: { id: s.id }, update: {}, create: s });
   }
 
   console.log('✅ Signalements citoyens seeded');
 
   // ── ACTUALITES ────────────────────────────────────────────────────────────────
   const actualitesData = [
-    {
-      id: ID.actualites.a1,
-      slug: 'lancement-plateforme-citoyenne-onmec',
-      title: 'Lancement de la plateforme citoyenne ONMEC',
-      date: new Date('2025-01-15'),
-      excerpt: 'La plateforme ONMEC ouvre ses portes pour connecter les citoyens ivoiriens à leurs institutions.',
-      content: '<p>La plateforme numérique ONMEC a été officiellement lancée ce 15 janvier 2025. Conçue pour faciliter la participation citoyenne, elle permet à chaque Ivoirien de signaler des problèmes de voirie, d\'accéder à des ressources civiques et de tester ses connaissances via des quiz interactifs.</p>',
-      imageUrl: '/images/actualites/lancement-onmec.jpg',
-    },
-    {
-      id: ID.actualites.a2,
-      slug: 'journee-nationale-citoyennete-2025',
-      title: 'Journée nationale de la citoyenneté 2025',
-      date: new Date('2025-03-10'),
-      excerpt: "Le 10 mars, la Côte d'Ivoire célèbre la citoyenneté active et la participation civique.",
-      content: "<p>À l'occasion de la Journée nationale de la citoyenneté, plusieurs activités sont organisées à travers le pays pour sensibiliser les populations à leurs droits et devoirs.</p>",
-      imageUrl: '/images/actualites/journee-citoyennete.jpg',
-    },
-    {
-      id: ID.actualites.a3,
-      slug: 'amelioration-voirie-abidjan-2025',
-      title: "Programme d'amélioration de la voirie à Abidjan",
-      date: new Date('2025-05-20'),
-      excerpt: 'Le gouvernement annonce un vaste programme de réhabilitation des routes abidjanaises.',
-      content: "<p>Dans le cadre du Plan National de Développement, le District Autonome d'Abidjan lance un programme d'envergure pour la réhabilitation de plus de 200 km de voirie urbaine.</p>",
-      imageUrl: '/images/actualites/voirie-abidjan.jpg',
-    },
+    { id: ID.actualites.a1, slug: 'lancement-plateforme-citoyenne-onmec', title: 'Lancement de la plateforme citoyenne ONMEC', date: new Date('2025-01-15'), excerpt: 'La plateforme ONMEC ouvre ses portes pour connecter les citoyens ivoiriens à leurs institutions.', content: '<p>La plateforme numérique ONMEC a été officiellement lancée ce 15 janvier 2025.</p>', imageUrl: '/images/actualites/lancement-onmec.jpg' },
+    { id: ID.actualites.a2, slug: 'journee-nationale-citoyennete-2025', title: 'Journée nationale de la citoyenneté 2025', date: new Date('2025-03-10'), excerpt: "Le 10 mars, la Côte d'Ivoire célèbre la citoyenneté active et la participation civique.", content: "<p>À l'occasion de la Journée nationale de la citoyenneté, plusieurs activités sont organisées à travers le pays.</p>", imageUrl: '/images/actualites/journee-citoyennete.jpg' },
+    { id: ID.actualites.a3, slug: 'amelioration-voirie-abidjan-2025', title: "Programme d'amélioration de la voirie à Abidjan", date: new Date('2025-05-20'), excerpt: 'Le gouvernement annonce un vaste programme de réhabilitation des routes abidjanaises.', content: "<p>Dans le cadre du Plan National de Développement, le District d'Abidjan lance un programme pour la réhabilitation de plus de 200 km de voirie urbaine.</p>", imageUrl: '/images/actualites/voirie-abidjan.jpg' },
   ];
 
   for (const a of actualitesData) {
-    await prisma.actualite.upsert({
-      where: { id: a.id },
-      update: {},
-      create: a,
-    });
+    await prisma.actualite.upsert({ where: { id: a.id }, update: {}, create: a });
   }
 
   console.log('✅ Actualités seeded');
 
   // ── DOCUMENTS ─────────────────────────────────────────────────────────────────
   const documentsData = [
-    {
-      id: ID.documents.d1,
-      title: "Constitution de la République de Côte d'Ivoire",
-      description: 'Texte intégral de la Constitution ivoirienne révisée en 2016.',
-      fileUrl: '/documents/constitution-ci-2016.pdf',
-      fileType: 'pdf',
-      uploadedById: ID.users.admin,
-    },
-    {
-      id: ID.documents.d2,
-      title: 'Guide du citoyen ivoirien',
-      description: 'Guide pratique sur les droits, devoirs et démarches administratives du citoyen.',
-      fileUrl: '/documents/guide-citoyen-ci.pdf',
-      fileType: 'pdf',
-      uploadedById: ID.users.admin,
-    },
-    {
-      id: ID.documents.d3,
-      title: 'Rapport annuel ONMEC 2024',
-      description: 'Bilan des activités et signalements traités par la plateforme en 2024.',
-      fileUrl: '/documents/rapport-onmec-2024.pdf',
-      fileType: 'pdf',
-      uploadedById: ID.users.admin,
-    },
+    { id: ID.documents.d1, title: "Constitution de la République de Côte d'Ivoire", description: 'Texte intégral de la Constitution ivoirienne révisée en 2016.', fileUrl: '/documents/constitution-ci-2016.pdf', fileType: 'pdf', uploadedById: ID.users.admin },
+    { id: ID.documents.d2, title: 'Guide du citoyen ivoirien', description: 'Guide pratique sur les droits, devoirs et démarches administratives du citoyen.', fileUrl: '/documents/guide-citoyen-ci.pdf', fileType: 'pdf', uploadedById: ID.users.admin },
+    { id: ID.documents.d3, title: 'Rapport annuel ONMEC 2024', description: 'Bilan des activités et signalements traités par la plateforme en 2024.', fileUrl: '/documents/rapport-onmec-2024.pdf', fileType: 'pdf', uploadedById: ID.users.admin },
   ];
 
   for (const d of documentsData) {
-    await prisma.document.upsert({
-      where: { id: d.id },
-      update: {},
-      create: d,
-    });
+    await prisma.document.upsert({ where: { id: d.id }, update: {}, create: d });
   }
 
   console.log('✅ Documents seeded');
 
   // ── NOTIFICATIONS ─────────────────────────────────────────────────────────────
   const notificationsData = [
-    {
-      id: ID.notifications.n1,
-      title: 'Bienvenue sur ONMEC !',
-      body: 'Votre compte a été créé avec succès. Découvrez la plateforme et participez à la vie citoyenne.',
-      type: 'welcome',
-      isRead: false,
-      userId: ID.users.member1,
-    },
-    {
-      id: ID.notifications.n2,
-      title: 'Bienvenue sur ONMEC !',
-      body: 'Votre compte a été créé avec succès. Découvrez la plateforme et participez à la vie citoyenne.',
-      type: 'welcome',
-      isRead: false,
-      userId: ID.users.member2,
-    },
-    {
-      id: ID.notifications.n3,
-      title: 'Votre signalement est en cours de traitement',
-      body: "Votre signalement 'Dépôt sauvage d'ordures rue des Jardins' est désormais pris en charge par nos équipes.",
-      type: 'signalement_update',
-      isRead: true,
-      userId: ID.users.member2,
-    },
-    {
-      id: ID.notifications.n4,
-      title: 'Nouveau quiz disponible',
-      body: "Un nouveau quiz 'Les bases de la citoyenneté' vient d'être publié. Testez vos connaissances !",
-      type: 'new_quiz',
-      isRead: false,
-      userId: ID.users.member1,
-    },
+    { id: ID.notifications.n1, title: 'Bienvenue sur ONMEC !', body: 'Votre compte a été créé avec succès. Découvrez la plateforme et participez à la vie citoyenne.', type: 'welcome', isRead: false, userId: ID.users.member1 },
+    { id: ID.notifications.n2, title: 'Bienvenue sur ONMEC !', body: 'Votre compte a été créé avec succès. Découvrez la plateforme et participez à la vie citoyenne.', type: 'welcome', isRead: false, userId: ID.users.member2 },
+    { id: ID.notifications.n3, title: 'Votre signalement est en cours de traitement', body: "Votre signalement 'Dépôt sauvage d'ordures rue des Jardins' est désormais pris en charge.", type: 'signalement_update', isRead: true, userId: ID.users.member2 },
+    { id: ID.notifications.n4, title: 'Nouveau quiz disponible', body: "Un nouveau quiz 'Les bases de la citoyenneté' vient d'être publié. Testez vos connaissances !", type: 'new_quiz', isRead: false, userId: ID.users.member1 },
   ];
 
   for (const n of notificationsData) {
-    await prisma.notification.upsert({
-      where: { id: n.id },
-      update: {},
-      create: n,
-    });
+    await prisma.notification.upsert({ where: { id: n.id }, update: {}, create: n });
   }
 
   console.log('✅ Notifications seeded');
