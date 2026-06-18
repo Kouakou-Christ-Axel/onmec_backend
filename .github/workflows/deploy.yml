@@ -71,6 +71,7 @@ jobs:
             cd "$APP_DIR"
             git pull origin master
             pnpm install --frozen-lockfile
+            pnpm exec prisma generate
             pnpm exec prisma migrate deploy
             pnpm exec prisma db seed
           ENDSSH

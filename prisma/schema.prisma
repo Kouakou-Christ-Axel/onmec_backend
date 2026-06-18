@@ -1,6 +1,7 @@
 generator client {
   provider        = "prisma-client-js"
-previewFeatures = ["fullTextSearchPostgres", "relationJoins"]
+  output          = "../src/generated/prisma"
+  previewFeatures = ["fullTextSearchPostgres", "relationJoins"]
 }
 
 datasource db {
@@ -138,12 +139,12 @@ model Quiz {
 
 // Questions pour chaque quiz
 model Question {
-  id        String   @id @default(uuid()) @db.Uuid // Ajout de @db.Uuid
+  id        String   @id @default(uuid()) @db.Uuid
   text      String
   quizId    String   @db.Uuid
   quiz      Quiz     @relation(fields: [quizId], references: [id])
   choices   Choice[]
-  correctId String?  @db.Uuid // Ajout de @db.Uuid si c'est une référence UUID
+  correctId String?  @db.Uuid
 
   UserAnswer UserAnswer[]
 }
@@ -188,7 +189,7 @@ model Notification {
   id        String   @id @default(uuid()) @db.Uuid
   title     String
   body      String
-  type      String? // ex: "quiz_result", "new_quiz", "reminder"
+  type      String?
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
 
@@ -200,7 +201,7 @@ model Notification {
 model DeviceToken {
   id        String   @id @default(uuid()) @db.Uuid
   token     String   @unique
-  platform  String? // ex: "android", "ios", "web"
+  platform  String?
   createdAt DateTime @default(now())
 
   userId String? @db.Uuid
