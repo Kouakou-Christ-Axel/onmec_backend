@@ -31,6 +31,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { QuizzService } from './quizz.service';
 import { CreateCategorieQuizDto, UpdateCategorieQuizDto } from './dto/create-categorie-quiz.dto';
 import { CreateQuizzDto } from './dto/create-quizz.dto';
+import { UpdateQuizzDto } from './dto/update-quizz.dto';
 import { SubmitAnswerDto } from './dto/submit-answer.dto';
 import { SearchQuizzDto } from './dto/search-quizz.dto';
 import {
@@ -174,6 +175,18 @@ export class QuizzController {
   @ApiUnauthorizedResponse({ description: 'Non authentifié' })
   getQuizStatistics(@Param('id') id: string) {
     return this.quizService.getQuizStatistics(id);
+  }
+
+  @Patch(':id')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Modifier un quiz', description: 'Met à jour un quiz et, si fournies, remplace ses questions et choix.' })
+  @ApiParam({ name: 'id', description: 'Identifiant du quiz', example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' })
+  @ApiBody({ type: UpdateQuizzDto })
+  @ApiOkResponse({ description: 'Quiz mis à jour', type: QuizzResponseDto })
+  @ApiNotFoundResponse({ description: 'Quiz non trouvé' })
+  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
+  update(@Param('id') id: string, @Body() updateQuizzDto: UpdateQuizzDto) {
+    return this.quizService.update(id, updateQuizzDto);
   }
 
   @Delete(':id')

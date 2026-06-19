@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/services/prisma.service';
 import { CreateQuizzDto } from './dto/create-quizz.dto';
+import { UpdateQuizzDto } from './dto/update-quizz.dto';
 import { SubmitAnswerDto } from './dto/submit-answer.dto';
 import { SearchQuizzDto } from './dto/search-quizz.dto';
 import { CreateCategorieQuizDto, UpdateCategorieQuizDto } from './dto/create-categorie-quiz.dto';
@@ -218,12 +219,92 @@ export class QuizzService {
     };
   }
 
+  async update(id: string, updateQuizzDto: UpdateQuizzDto) {
+    const existing = await this.prisma.quiz.findUnique({
+      where: { id },
+      select: { id: true, questions: { select: { id: true } } },
+    });
+
+    if (!existing) throw new NotFoundException(`Quiz avec l'ID ${id} non trouvé`);
+
+    const { title, description, difficulte, categorieId, questions } = updateQuizzDto;
+
+    await this.prisma.$transaction(async (tx) => {
+      // Mise à jour des champs scalaires fournis
+      await tx.quiz.update({
+        where: { id },
+        data: {
+          ...(title !== undefined ? { title } : {}),
+          ...(description !== undefined ? { description } : {}),
+          ...(difficulte !== undefined ? { difficulte } : {}),
+          ...(categorieId !== undefined ? { categorieId } : {}),
+        },
+      });
+
+      // Remplacement complet des questions/choix si fournis
+      if (questions) {
+        const questionIds = existing.questions.map((q) => q.id);
+
+        if (questionIds.length) {
+          await tx.userAnswer.deleteMany({ where: { questionId: { in: questionIds } } });
+          await tx.choice.deleteMany({ where: { questionId: { in: questionIds } } });
+        }
+        await tx.question.deleteMany({ where: { quizId: id } });
+
+        for (const question of questions) {
+          const createdQuestion = await tx.question.create({
+            data: {
+              text: question.text,
+              quizId: id,
+              correctId: null,
+              choices: { create: question.choices.map((choice) => ({ text: choice.text })) },
+            },
+            include: { choices: true },
+          });
+
+          const correctChoiceIndex = question.choices.findIndex((c) => c.isCorrect);
+          if (correctChoiceIndex !== -1) {
+            await tx.question.update({
+              where: { id: createdQuestion.id },
+              data: { correctId: createdQuestion.choices[correctChoiceIndex].id },
+            });
+          }
+        }
+      }
+    });
+
+    return this.findOne(id);
+  }
+
   async remove(id: string) {
     const quiz = await this.prisma.quiz.findUnique({ where: { id } });
 
     if (!quiz) throw new NotFoundException(`Quiz avec l'ID ${id} non trouvé`);
 
-    await this.prisma.quiz.delete({ where: { id } });
+    await this.prisma.$transaction(async (tx) => {
+      const questions = await tx.question.findMany({
+        where: { quizId: id },
+        select: { id: true },
+      });
+      const questionIds = questions.map((q) => q.id);
+
+      const userQuizzes = await tx.userQuiz.findMany({
+        where: { quizId: id },
+        select: { id: true },
+      });
+      const userQuizIds = userQuizzes.map((uq) => uq.id);
+
+      if (userQuizIds.length) {
+        await tx.userAnswer.deleteMany({ where: { userQuizId: { in: userQuizIds } } });
+        await tx.userQuiz.deleteMany({ where: { quizId: id } });
+      }
+      if (questionIds.length) {
+        await tx.userAnswer.deleteMany({ where: { questionId: { in: questionIds } } });
+        await tx.choice.deleteMany({ where: { questionId: { in: questionIds } } });
+      }
+      await tx.question.deleteMany({ where: { quizId: id } });
+      await tx.quiz.delete({ where: { id } });
+    });
 
     return { message: `Quiz "${quiz.title}" supprimé avec succès` };
   }
