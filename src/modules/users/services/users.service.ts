@@ -29,12 +29,12 @@ export class UsersService {
       createUserDto,
     );
 
-    // Créer l'utilisateur
+    // Créer l'utilisateur (le rôle fourni est respecté, MEMBER par défaut)
     const newUser = await this.prisma.user.create({
       data: {
         ...createUserDto,
         password: hash,
-        role: UserRole.MEMBER,
+        role: createUserDto.role ?? UserRole.MEMBER,
       },
     });
 
