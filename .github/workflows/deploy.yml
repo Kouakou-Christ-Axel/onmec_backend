@@ -53,14 +53,15 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_KEY }}
-
       - name: Apply migrations and seed on VPS
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'ENDSSH'
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          command_timeout: 10m
+          script_stop: true
+          script: |
             set -e
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh" || { echo "nvm introuvable"; exit 1; }
@@ -73,7 +74,6 @@ jobs:
             pnpm install --frozen-lockfile
             pnpm exec prisma migrate deploy
             pnpm exec prisma db seed
-          ENDSSH
 
   deploy:
     name: Deploy
@@ -83,15 +83,15 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_KEY }}
-
       - name: Deploy to VPS
-        timeout-minutes: 25
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'ENDSSH'
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          command_timeout: 25m
+          script_stop: true
+          script: |
             set -e
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh" || { echo "nvm introuvable"; exit 1; }
@@ -119,4 +119,3 @@ jobs:
               echo "App not online after deploy"
               exit 1
             fi
-          ENDSSH
