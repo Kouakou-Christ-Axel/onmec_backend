@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/services/prisma.service';
 import { CreateQuizzDto } from './dto/create-quizz.dto';
 import { SubmitAnswerDto } from './dto/submit-answer.dto';
@@ -56,21 +57,46 @@ export class QuizzService {
   }
 
   async findAll(query: SearchQuizzDto = {}) {
-    const where: Record<string, unknown> = {};
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.QuizWhereInput = {};
 
     if (query.categorieId) where.categorieId = query.categorieId;
     if (query.difficulte) where.difficulte = query.difficulte;
+    if (query.search) {
+      where.OR = [
+        { title: { contains: query.search, mode: 'insensitive' } },
+        { description: { contains: query.search, mode: 'insensitive' } },
+      ];
+    }
 
-    return this.prisma.quiz.findMany({
-      where,
-      include: {
-        author: { select: { id: true, fullname: true, email: true } },
-        categorie: { select: { id: true, nom: true } },
-        questions: { include: { choices: true } },
-        _count: { select: { userQuizzes: true } },
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.quiz.findMany({
+        where,
+        include: {
+          author: { select: { id: true, fullname: true, email: true } },
+          categorie: { select: { id: true, nom: true } },
+          questions: { include: { choices: true } },
+          _count: { select: { userQuizzes: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.quiz.count({ where }),
+    ]);
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 1,
       },
-      orderBy: { createdAt: 'desc' },
-    });
+    };
   }
 
   async findOne(id: string) {
