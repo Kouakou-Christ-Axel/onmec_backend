@@ -74,8 +74,16 @@ export class QuizzController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Liste des quiz', description: 'Retourne tous les quiz, avec filtres optionnels par catégorie ou difficulté.' })
-  @ApiOkResponse({ description: 'Liste des quiz', type: [QuizzResponseDto] })
+  @ApiOperation({ summary: 'Liste des quiz', description: 'Retourne les quiz avec pagination et filtres optionnels par catégorie, difficulté ou recherche.' })
+  @ApiOkResponse({
+    description: 'Liste paginée des quiz',
+    schema: {
+      allOf: [
+        { $ref: '#/components/schemas/PaginatedResponseDto' },
+        { properties: { data: { type: 'array', items: { $ref: '#/components/schemas/QuizzResponseDto' } } } },
+      ],
+    },
+  })
   findAll(@Query() query: SearchQuizzDto) {
     return this.quizService.findAll(query);
   }
