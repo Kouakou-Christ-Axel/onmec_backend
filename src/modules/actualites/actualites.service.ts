@@ -192,10 +192,15 @@ export class ActualitesService {
 
 	private addCdnUrl(actualite: ActualiteEntity) {
 		if (!actualite.imageUrl) return actualite;
-		const cdnUrl = this.configService.get<string>('CDN_URL') || '';
+		// Normalise le join pour éviter les doubles slashes (ex: "https://host/" + "/uploads/..."),
+		// qui font échouer le service de fichiers statiques et déclenchent ERR_BLOCKED_BY_ORB côté navigateur.
+		const cdnUrl = (this.configService.get<string>('CDN_URL') || '').replace(/\/+$/, '');
+		const path = actualite.imageUrl.startsWith('/')
+			? actualite.imageUrl
+			: `/${actualite.imageUrl}`;
 		return {
 			...actualite,
-			imageUrl: `${cdnUrl}${actualite.imageUrl}`,
+			imageUrl: `${cdnUrl}${path}`,
 		};
 	}
 }
