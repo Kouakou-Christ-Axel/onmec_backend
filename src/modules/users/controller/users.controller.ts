@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpStatus, Param, Patch, Post, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpStatus, Param, Patch, Post, Query, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBadRequestResponse,
@@ -23,6 +23,7 @@ import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
 import { CreateUserDto } from 'src/modules/users/dto/create-user.dto';
 import { UpdateUserPasswordDto } from 'src/modules/users/dto/update-user-password.dto';
 import { UpdateUserDto } from 'src/modules/users/dto/update-user.dto';
+import { SearchUserDto } from 'src/modules/users/dto/search-user.dto';
 import { UsersService } from 'src/modules/users/services/users.service';
 import { ResetUserPasswordResponseDto } from '../dto/reset-user-password.dto';
 import { UserResponseDto } from '../dto/user-response.dto';
@@ -93,11 +94,69 @@ export class UsersController {
   // GET ALL USERS
   @Get()
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Liste des utilisateurs', description: 'Retourne tous les utilisateurs (admin requis implicitement).' })
-  @ApiOkResponse({ description: 'Liste récupérée', type: [UserResponseDto] })
+  @ApiOperation({ summary: 'Liste des utilisateurs', description: 'Retourne les utilisateurs avec pagination et filtres optionnels (recherche, rôle, état).' })
+  @ApiOkResponse({
+    description: 'Liste paginée récupérée',
+    schema: {
+      allOf: [
+        { $ref: '#/components/schemas/PaginatedResponseDto' },
+        { properties: { data: { type: 'array', items: { $ref: '#/components/schemas/UserResponseDto' } } } },
+      ],
+    },
+  })
   @ApiUnauthorizedResponse({ description: 'Non authentifié' })
-  findAll() {
-    return this.usersService.findAll();
+  findAll(@Query() query: SearchUserDto) {
+    return this.usersService.findAll(query);
+  }
+
+  // GET ONE USER (par id - Admin)
+  @Get(':id/profile')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Détail d\'un utilisateur', description: 'Retourne le profil d\'un utilisateur par son identifiant.' })
+  @ApiParam({ name: 'id', description: 'Identifiant de l\'utilisateur', example: 'u1b2c3d4-e5f6-7890-abcd-ef1234567890' })
+  @ApiOkResponse({ description: 'Utilisateur récupéré', type: UserResponseDto })
+  @ApiNotFoundResponse({ description: 'Utilisateur non trouvé' })
+  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
+  findOneById(@Param('id') id: string) {
+    return this.usersService.findOneById(id);
+  }
+
+  // UPDATE ONE USER (par id - Admin)
+  @Patch(':id/profile')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Mettre à jour un utilisateur (Admin)', description: 'Met à jour le profil d\'un utilisateur par son identifiant.' })
+  @ApiParam({ name: 'id', description: 'Identifiant de l\'utilisateur', example: 'u1b2c3d4-e5f6-7890-abcd-ef1234567890' })
+  @ApiBody({ type: UpdateUserDto })
+  @ApiOkResponse({ description: 'Utilisateur mis à jour', type: UserResponseDto })
+  @ApiNotFoundResponse({ description: 'Utilisateur non trouvé' })
+  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
+  updateById(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
+    return this.usersService.updateById(id, updateUserDto);
+  }
+
+  // LOCK / UNLOCK USER (par id - Admin)
+  @Patch(':id/lock')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Verrouiller / déverrouiller un utilisateur (Admin)', description: 'Active ou désactive un compte utilisateur.' })
+  @ApiParam({ name: 'id', description: 'Identifiant de l\'utilisateur', example: 'u1b2c3d4-e5f6-7890-abcd-ef1234567890' })
+  @ApiBody({ schema: { properties: { locked: { type: 'boolean', example: true } } } })
+  @ApiOkResponse({ description: 'État du compte mis à jour', type: UserResponseDto })
+  @ApiNotFoundResponse({ description: 'Utilisateur non trouvé' })
+  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
+  setLockState(@Param('id') id: string, @Body('locked') locked: boolean) {
+    return this.usersService.setLockState(id, locked);
+  }
+
+  // DELETE ONE USER (par id - Admin)
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Supprimer un utilisateur (Admin)', description: 'Suppression définitive d\'un utilisateur par son identifiant.' })
+  @ApiParam({ name: 'id', description: 'Identifiant de l\'utilisateur', example: 'u1b2c3d4-e5f6-7890-abcd-ef1234567890' })
+  @ApiOkResponse({ description: 'Utilisateur supprimé' })
+  @ApiNotFoundResponse({ description: 'Utilisateur non trouvé' })
+  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
+  removeById(@Param('id') id: string) {
+    return this.usersService.removeById(id);
   }
 
   // UPDATE USER

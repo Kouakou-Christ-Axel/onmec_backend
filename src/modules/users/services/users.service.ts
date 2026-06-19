@@ -5,7 +5,8 @@ import {
 } from '@nestjs/common';
 
 import { CreateUserDto } from '../dto/create-user.dto';
-import { User, UserRole } from '@prisma/client';
+import { Prisma, User, UserRole } from '@prisma/client';
+import { SearchUserDto } from '../dto/search-user.dto';
 import { Request } from 'express';
 import { PrismaService } from 'src/database/services/prisma.service';
 import * as bcrypt from 'bcryptjs';
@@ -85,16 +86,111 @@ export class UsersService {
     return { ...rest, password: pass };
   }
 
-  // FIND_ALL
-  async findAll() {
-    return await this.prisma.user.findMany({
-      orderBy: {
-        updatedAt: 'desc',
+  // FIND_ALL (paginé + filtres)
+  async findAll(query: SearchUserDto = {}) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.UserWhereInput = {};
+
+    if (query.search) {
+      where.OR = [
+        { fullname: { contains: query.search, mode: 'insensitive' } },
+        { email: { contains: query.search, mode: 'insensitive' } },
+        { phone: { contains: query.search, mode: 'insensitive' } },
+      ];
+    }
+
+    if (query.role) {
+      where.role = query.role;
+    }
+
+    if (query.status === 'ACTIVE') {
+      where.deletedAt = null;
+    } else if (query.status === 'INACTIVE') {
+      where.deletedAt = { not: null };
+    }
+
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.user.findMany({
+        where: Object.keys(where).length ? where : undefined,
+        orderBy: { updatedAt: 'desc' },
+        omit: { password: true },
+        skip,
+        take: limit,
+      }),
+      this.prisma.user.count({
+        where: Object.keys(where).length ? where : undefined,
+      }),
+    ]);
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 1,
       },
-      omit: {
-        password: true,
-      },
+    };
+  }
+
+  // FIND_ONE (par id)
+  async findOneById(id: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      omit: { password: true },
     });
+
+    if (!user) {
+      throw new NotFoundException('Utilisateur non trouvé');
+    }
+
+    return user;
+  }
+
+  // UPDATE (par id - Admin)
+  async updateById(id: string, updateUserDto: UpdateUserDto) {
+    const exist = await this.prisma.user.findUnique({ where: { id } });
+    if (!exist) {
+      throw new NotFoundException('Utilisateur non trouvé');
+    }
+
+    return await this.prisma.user.update({
+      where: { id },
+      data: updateUserDto,
+      omit: { password: true },
+    });
+  }
+
+  // LOCK / UNLOCK (par id - Admin)
+  async setLockState(id: string, locked: boolean) {
+    const exist = await this.prisma.user.findUnique({ where: { id } });
+    if (!exist) {
+      throw new NotFoundException('Utilisateur non trouvé');
+    }
+
+    return await this.prisma.user.update({
+      where: { id },
+      data: { deletedAt: locked ? new Date() : null },
+      omit: { password: true },
+    });
+  }
+
+  // DELETE (par id - Admin)
+  async removeById(id: string) {
+    const exist = await this.prisma.user.findUnique({ where: { id } });
+    if (!exist) {
+      throw new NotFoundException('Utilisateur non trouvé');
+    }
+
+    await this.prisma.user.delete({ where: { id } });
+
+    return {
+      success: true,
+      message: 'Utilisateur supprimé avec succès',
+    };
   }
 
   // DETAIL
