@@ -19,6 +19,16 @@ export class LibrairieService {
 	) {
 	}
 
+	/**
+	 * Retourne l'URL de base du backend sans slash final, afin d'éviter les
+	 * doubles slashes lorsqu'on la concatène avec un chemin (`/api/v1/...`,
+	 * `/uploads/...`). Ex: "https://admin.mec-ci.org/" -> "https://admin.mec-ci.org".
+	 */
+	private getBackendUrl(): string {
+		const backendUrl = this.configService.get<string>('BACKEND_URL') ?? '';
+		return backendUrl.replace(/\/+$/, '');
+	}
+
 	async create(createLibrairieDto: CreateDocumentDto, files: DocumentFilesDto): Promise<DocumentResponseDto> {
 		const {fichiers, covers} = files;
 		const fichier = fichiers && fichiers.length > 0 ? fichiers[0] : null;
@@ -176,7 +186,7 @@ export class LibrairieService {
 			take: limit,
 		});
 
-		const backendUrl = this.configService.get<string>('BACKEND_URL');
+		const backendUrl = this.getBackendUrl();
 		return {
 			data: documents.map(doc => ({
 				id: doc.id,
@@ -213,7 +223,7 @@ export class LibrairieService {
 			throw new NotFoundException(`Document avec l'ID ${id} non trouvé`);
 		}
 
-		const backendUrl = this.configService.get<string>('BACKEND_URL');
+		const backendUrl = this.getBackendUrl();
 		return {
 			id: document.id,
 			title: document.title,
@@ -318,14 +328,14 @@ export class LibrairieService {
 
 	private documentToDto(document: any) {
 		const id = document.id;
-		const backendUrl = this.configService.get<string>('BACKEND_URL');
+		const backendUrl = this.getBackendUrl();
 		return {
 			id,
 			title: document.title,
 			description: document.description,
 			fileType: document.fileType,
 			fileUrl: `${backendUrl}/api/v1/librairie/${id}/file`,
-			coverImage: `${backendUrl}${document.coverImage}`,
+			coverImage: document.coverImage ? `${backendUrl}${document.coverImage}` : null,
 			uploadedAt: document.uploadedAt,
 			uploadedBy: {
 				id: document.uploadedBy.id,
