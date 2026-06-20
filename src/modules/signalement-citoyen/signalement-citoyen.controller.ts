@@ -22,6 +22,7 @@ import {SearchSignalementCitoyenDto} from './dto/signalement-citoyen-dto/search-
 import {ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiParam, ApiResponse, ApiTags,} from '@nestjs/swagger';
 import {SignalementCitoyenDto} from './dto/signalement-citoyen-dto/signalement-citoyen.dto';
 import {JwtAuthGuard} from '../auth/guards/jwt-auth.guard';
+import {OptionalJwtAuthGuard} from '../auth/guards/optional-jwt-auth.guard';
 import {AdminGuard} from '../auth/guards/admin.guard';
 import {FilesInterceptor} from '@nestjs/platform-express';
 
@@ -107,8 +108,10 @@ export class SignalementCitoyenController {
 		status: HttpStatus.UNAUTHORIZED,
 		description: 'Non authentifié',
 	})
-	findAll(@Query() searchDto: SearchSignalementCitoyenDto) {
-		return this.signalementCitoyenService.findAll(searchDto);
+	@UseGuards(OptionalJwtAuthGuard)
+	findAll(@Query() searchDto: SearchSignalementCitoyenDto, @Req() req: Request) {
+		const user = req.user as User | undefined;
+		return this.signalementCitoyenService.findAll(searchDto, user?.id);
 	}
 
 	@Get(':id')
@@ -134,8 +137,10 @@ export class SignalementCitoyenController {
 		status: HttpStatus.UNAUTHORIZED,
 		description: 'Non authentifié',
 	})
-	findOne(@Param('id') id: string) {
-		return this.signalementCitoyenService.findOne(id);
+	@UseGuards(OptionalJwtAuthGuard)
+	findOne(@Param('id') id: string, @Req() req: Request) {
+		const user = req.user as User | undefined;
+		return this.signalementCitoyenService.findOne(id, user?.id);
 	}
 
 	@Patch(':id')
