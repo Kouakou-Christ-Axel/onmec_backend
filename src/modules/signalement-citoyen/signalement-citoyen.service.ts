@@ -7,12 +7,26 @@ import {promises as fs} from 'fs';
 import * as path from 'path';
 import {PaginatedResponse} from './dto/signalement-citoyen-dto/paginated-response.dto';
 import {StatutSignalement} from "@prisma/client";
+import {EngagementService} from '../engagement/engagement.service';
 
 @Injectable()
 export class SignalementCitoyenService {
 	private readonly uploadDir = path.join(process.cwd(), 'uploads', 'signalements');
 
-	constructor(private readonly prisma: PrismaService) {
+	constructor(
+		private readonly prisma: PrismaService,
+		private readonly engagementService: EngagementService,
+	) {
+	}
+
+	/**
+	 * Enrichit un signalement avec ses statistiques d'engagement
+	 * (likesCount, commentsCount, likedByMe).
+	 */
+	private async withEngagement<T extends {id: string}>(signalement: T, userId?: string): Promise<T & {likesCount: number; commentsCount: number; likedByMe: boolean}> {
+		const stats = await this.engagementService.getEngagementStats('signalement', [signalement.id], userId);
+		const entry = stats.get(signalement.id) ?? {likesCount: 0, commentsCount: 0, likedByMe: false};
+		return {...signalement, ...entry};
 	}
 
 	/**
@@ -120,7 +134,7 @@ export class SignalementCitoyenService {
 	/**
 	 * Récupère tous les signalements avec pagination et filtres
 	 */
-	async findAll(searchDto: SearchSignalementCitoyenDto): Promise<PaginatedResponse<any>> {
+	async findAll(searchDto: SearchSignalementCitoyenDto, userId?: string): Promise<PaginatedResponse<any>> {
 		const {titre, categorieId, statut, latitude, longitude, citoyenId, page = 1, limit = 10} = searchDto;
 		const where: any = {};
 
@@ -157,8 +171,19 @@ export class SignalementCitoyenService {
 
 		const totalPages = Math.ceil(total / limit);
 
+		const stats = await this.engagementService.getEngagementStats(
+			'signalement',
+			signalements.map((s) => s.id),
+			userId,
+		);
+
+		const data = signalements.map((s) => ({
+			...s,
+			...(stats.get(s.id) ?? {likesCount: 0, commentsCount: 0, likedByMe: false}),
+		}));
+
 		return {
-			data: signalements,
+			data,
 			meta: {
 				total,
 				page,
@@ -171,7 +196,7 @@ export class SignalementCitoyenService {
 	/**
 	 * Récupère un signalement par son ID
 	 */
-	async findOne(id: string) {
+	async findOne(id: string, userId?: string) {
 		const signalement = await this.prisma.signalementCitoyen.findUnique({
 			where: {id},
 			include: {
@@ -190,7 +215,7 @@ export class SignalementCitoyenService {
 				`Signalement citoyen avec l'id ${id} introuvable`,
 			);
 		}
-		return signalement;
+		return this.withEngagement(signalement, userId);
 	}
 
 	/**

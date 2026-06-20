@@ -7,6 +7,7 @@ import {ActualitesSearchDto} from './dto/actualites-search.dto';
 import {Prisma} from '@prisma/client';
 import {ActualiteEntity} from "./entities/actualite.entity";
 import {ConfigService} from '@nestjs/config';
+import {EngagementService} from '../engagement/engagement.service';
 
 
 @Injectable()
@@ -14,6 +15,7 @@ export class ActualitesService {
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly configService: ConfigService,
+		private readonly engagementService: EngagementService,
 	) {
 	}
 
@@ -52,7 +54,7 @@ export class ActualitesService {
 		});
 	}
 
-	async findAll(query?: ActualitesSearchDto) {
+	async findAll(query?: ActualitesSearchDto, userId?: string) {
 		const page = query?.page ?? 1;
 		const limit = query?.limit ?? 10;
 		const skip = (page - 1) * limit;
@@ -103,7 +105,16 @@ export class ActualitesService {
 			this.prisma.actualite.count({where: Object.keys(where).length ? where : undefined}),
 		]);
 
-		const mappedData = data.map(item => this.mapToEntity(item));
+		const stats = await this.engagementService.getEngagementStats(
+			'actualite',
+			data.map((item) => item.id),
+			userId,
+		);
+
+		const mappedData = data.map(item => ({
+			...this.mapToEntity(item),
+			...(stats.get(item.id) ?? {likesCount: 0, commentsCount: 0, likedByMe: false}),
+		}));
 
 		return {
 			data: mappedData,
@@ -116,7 +127,7 @@ export class ActualitesService {
 		};
 	}
 
-	async findOne(id: string) {
+	async findOne(id: string, userId?: string) {
 		const actualite = await this.prisma.actualite.findUnique({
 			where: {id},
 		});
@@ -125,10 +136,10 @@ export class ActualitesService {
 			throw new NotFoundException(`Actualité avec l'ID ${id} non trouvée`);
 		}
 
-		return this.mapToEntity(actualite);
+		return this.withEngagement(this.mapToEntity(actualite), actualite.id, userId);
 	}
 
-	async findBySlug(slug: string) {
+	async findBySlug(slug: string, userId?: string) {
 		const actualite = await this.prisma.actualite.findUnique({
 			where: {slug},
 		});
@@ -137,7 +148,17 @@ export class ActualitesService {
 			throw new NotFoundException(`Actualité avec le slug ${slug} non trouvée`);
 		}
 
-		return this.mapToEntity(actualite);
+		return this.withEngagement(this.mapToEntity(actualite), actualite.id, userId);
+	}
+
+	/**
+	 * Enrichit une actualité avec ses statistiques d'engagement
+	 * (likesCount, commentsCount, likedByMe).
+	 */
+	private async withEngagement(actualite: ActualiteEntity, id: string, userId?: string) {
+		const stats = await this.engagementService.getEngagementStats('actualite', [id], userId);
+		const entry = stats.get(id) ?? {likesCount: 0, commentsCount: 0, likedByMe: false};
+		return {...actualite, ...entry};
 	}
 
 	async update(id: string, updateActualiteDto: UpdateActualiteDto, image?: Express.Multer.File) {

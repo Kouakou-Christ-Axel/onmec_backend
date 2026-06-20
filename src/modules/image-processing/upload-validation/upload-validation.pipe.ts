@@ -23,17 +23,25 @@ export class UploadValidationPipe implements PipeTransform {
 
     const allowedImageTypes = ['.jpg', '.jpeg', '.png', '.webp'];
     const allowedDocTypes = ['.pdf', '.epub', '.mobi', '.docx', '.txt'];
-    const maxSizeMB = 50; // taille max en MB
+    const maxDocSizeMB = 20; // taille max d'un document en MB
+    const maxCoverSizeMB = 5; // taille max d'une image de couverture en MB
 
-    const validateFile = (file: Express.Multer.File, allowed: string[]) => {
+    const validateFile = (
+      file: Express.Multer.File,
+      allowed: string[],
+      maxSizeMB: number,
+    ) => {
       const ext = extname(file.originalname).toLowerCase();
       if (!allowed.includes(ext)) {
-        throw new BadRequestException(`Type de fichier non autorisé: ${ext}`);
+        throw new BadRequestException(
+          `Type de fichier non autorisé pour « ${file.originalname} » : ${ext || 'inconnu'}. Formats acceptés : ${allowed.join(', ')}.`,
+        );
       }
 
       if (file.size > maxSizeMB * 1024 * 1024) {
+        const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
         throw new BadRequestException(
-          `Fichier trop volumineux: ${file.originalname}, taille maximale autorisée est ${maxSizeMB}MB.`,
+          `Fichier trop volumineux : « ${file.originalname} » fait ${fileSizeMB}MB, la taille maximale autorisée est ${maxSizeMB}MB.`,
         );
       }
 
@@ -42,8 +50,12 @@ export class UploadValidationPipe implements PipeTransform {
       file.originalname = `${baseName}${ext}`;
     };
 
-    value.covers?.forEach((file) => validateFile(file, allowedImageTypes));
-    value.fichiers?.forEach((file) => validateFile(file, allowedDocTypes));
+    value.covers?.forEach((file) =>
+      validateFile(file, allowedImageTypes, maxCoverSizeMB),
+    );
+    value.fichiers?.forEach((file) =>
+      validateFile(file, allowedDocTypes, maxDocSizeMB),
+    );
 
     return value; // renvoie les fichiers valides & renommés
   }

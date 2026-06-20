@@ -8,10 +8,13 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors
 } from '@nestjs/common';
+import {Request} from 'express';
+import {User} from '@prisma/client';
 import {ActualitesService} from './actualites.service';
 import {CreateActualiteDto} from './dto/create-actualite.dto';
 import {UpdateActualiteDto} from './dto/update-actualite.dto';
@@ -31,6 +34,7 @@ import {
 } from '@nestjs/swagger';
 import {ActualitesSearchDto} from './dto/actualites-search.dto';
 import {JwtAuthGuard} from "../auth/guards/jwt-auth.guard";
+import {OptionalJwtAuthGuard} from "../auth/guards/optional-jwt-auth.guard";
 import {ActualiteResponseDto} from './dto/actualite-response.dto';
 
 @ApiTags('Actualités')
@@ -70,8 +74,10 @@ export class ActualitesController {
       ],
     },
   })
-  findAll(@Query() query: ActualitesSearchDto) {
-    return this.actualitesService.findAll(query);
+  @UseGuards(OptionalJwtAuthGuard)
+  findAll(@Query() query: ActualitesSearchDto, @Req() req: Request) {
+    const user = req.user as User | undefined;
+    return this.actualitesService.findAll(query, user?.id);
   }
 
   @Get('slug/:slug')
@@ -79,8 +85,10 @@ export class ActualitesController {
   @ApiParam({ name: 'slug', description: 'Slug unique de l\'actualité', example: 'inauguration-du-nouveau-pont' })
   @ApiOkResponse({ description: 'Actualité trouvée', type: ActualiteResponseDto })
   @ApiNotFoundResponse({ description: 'Actualité non trouvée' })
-  findBySlug(@Param('slug') slug: string) {
-    return this.actualitesService.findBySlug(slug);
+  @UseGuards(OptionalJwtAuthGuard)
+  findBySlug(@Param('slug') slug: string, @Req() req: Request) {
+    const user = req.user as User | undefined;
+    return this.actualitesService.findBySlug(slug, user?.id);
   }
 
   @Get(':id')
@@ -88,8 +96,10 @@ export class ActualitesController {
   @ApiParam({ name: 'id', description: 'Identifiant de l\'actualité', example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' })
   @ApiOkResponse({ description: 'Actualité trouvée', type: ActualiteResponseDto })
   @ApiNotFoundResponse({ description: 'Actualité non trouvée' })
-  findOne(@Param('id') id: string) {
-    return this.actualitesService.findOne(id);
+  @UseGuards(OptionalJwtAuthGuard)
+  findOne(@Param('id') id: string, @Req() req: Request) {
+    const user = req.user as User | undefined;
+    return this.actualitesService.findOne(id, user?.id);
   }
 
   @Patch(':id')

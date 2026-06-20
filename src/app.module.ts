@@ -14,6 +14,7 @@ import { SignalementCitoyenModule } from './modules/signalement-citoyen/signalem
 import { QuizzModule } from './modules/quizz/quizz.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { ActualitesModule } from './modules/actualites/actualites.module';
+import { EngagementModule } from './modules/engagement/engagement.module';
 import { HealthModule } from './health/health.module';
 
 @Module({
@@ -33,6 +34,7 @@ import { HealthModule } from './health/health.module';
     QuizzModule,
     NotificationModule,
     ActualitesModule,
+    EngagementModule,
     HealthModule,
   ],
 })
