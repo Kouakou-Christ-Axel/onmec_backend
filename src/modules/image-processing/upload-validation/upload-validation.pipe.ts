@@ -22,7 +22,10 @@ export class UploadValidationPipe implements PipeTransform {
     }
 
     const allowedImageTypes = ['.jpg', '.jpeg', '.png', '.webp'];
-    const allowedDocTypes = ['.pdf', '.epub', '.mobi', '.docx', '.txt'];
+    // La librairie n'accepte QUE des PDF : extension .pdf et type MIME
+    // application/pdf (garde-fou contre un fichier renommé).
+    const allowedDocTypes = ['.pdf'];
+    const allowedDocMimes = ['application/pdf'];
     const maxDocSizeMB = 20; // taille max d'un document en MB
     const maxCoverSizeMB = 5; // taille max d'une image de couverture en MB
 
@@ -30,11 +33,18 @@ export class UploadValidationPipe implements PipeTransform {
       file: Express.Multer.File,
       allowed: string[],
       maxSizeMB: number,
+      allowedMimes?: string[],
     ) => {
       const ext = extname(file.originalname).toLowerCase();
       if (!allowed.includes(ext)) {
         throw new BadRequestException(
           `Type de fichier non autorisé pour « ${file.originalname} » : ${ext || 'inconnu'}. Formats acceptés : ${allowed.join(', ')}.`,
+        );
+      }
+
+      if (allowedMimes && !allowedMimes.includes(file.mimetype)) {
+        throw new BadRequestException(
+          `Le fichier « ${file.originalname} » doit être un PDF valide (type reçu : ${file.mimetype || 'inconnu'}).`,
         );
       }
 
@@ -54,7 +64,7 @@ export class UploadValidationPipe implements PipeTransform {
       validateFile(file, allowedImageTypes, maxCoverSizeMB),
     );
     value.fichiers?.forEach((file) =>
-      validateFile(file, allowedDocTypes, maxDocSizeMB),
+      validateFile(file, allowedDocTypes, maxDocSizeMB, allowedDocMimes),
     );
 
     return value; // renvoie les fichiers valides & renommés

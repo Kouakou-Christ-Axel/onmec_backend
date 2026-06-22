@@ -47,6 +47,7 @@ export class LibrairieService {
 				data: {
 					title: createLibrairieDto.title,
 					description: createLibrairieDto.description || null,
+					categorie: createLibrairieDto.categorie || null,
 					fileType: this.getFileExtension(fichier.originalname),
 					uploadedById: createLibrairieDto.userId,
 					fileUrl: '', // Sera mis à jour avec le chemin final
@@ -105,6 +106,7 @@ export class LibrairieService {
 			title: search.title
 				? {contains: search.title, mode: 'insensitive' as const}
 				: undefined,
+			categorie: search.categorie ? {equals: search.categorie} : undefined,
 		};
 
 		// Récupérer le nombre total de documents
@@ -170,6 +172,7 @@ export class LibrairieService {
 			title: search.title
 				? {contains: search.title, mode: 'insensitive' as const}
 				: undefined,
+			categorie: search.categorie ? {equals: search.categorie} : undefined,
 		};
 
 		const total = await this.prisma.document.count({where});
@@ -192,6 +195,7 @@ export class LibrairieService {
 				id: doc.id,
 				title: doc.title,
 				description: doc.description,
+				categorie: doc.categorie,
 				fileType: doc.fileType,
 				fileUrl: `${backendUrl}/api/v1/librairie/${doc.id}/file`,
 				coverImage: doc.coverImage ? `${backendUrl}${doc.coverImage}` : null,
@@ -228,12 +232,29 @@ export class LibrairieService {
 			id: document.id,
 			title: document.title,
 			description: document.description,
+			categorie: document.categorie,
 			fileType: document.fileType,
 			fileUrl: `${backendUrl}/api/v1/librairie/${document.id}/file`,
 			coverImage: document.coverImage ? `${backendUrl}${document.coverImage}` : null,
 			uploadedAt: document.uploadedAt,
 			auteur: document.uploadedBy?.fullname ?? '',
 		};
+	}
+
+	/**
+	 * Liste les catégories distinctes présentes sur les documents (hors null),
+	 * triées alphabétiquement — pour alimenter les filtres côté application.
+	 */
+	async findCategories(): Promise<string[]> {
+		const rows = await this.prisma.document.findMany({
+			where: {categorie: {not: null}},
+			distinct: ['categorie'],
+			select: {categorie: true},
+			orderBy: {categorie: 'asc'},
+		});
+		return rows
+			.map((r) => r.categorie)
+			.filter((c): c is string => !!c && c.trim().length > 0);
 	}
 
 	async getFile(id: string) {
@@ -274,6 +295,7 @@ export class LibrairieService {
 			data: {
 				title: updateLibrairieDto.title ?? document.title,
 				description: updateLibrairieDto.description ?? document.description,
+				categorie: updateLibrairieDto.categorie ?? document.categorie,
 			},
 			include: {
 				uploadedBy: {
@@ -333,6 +355,7 @@ export class LibrairieService {
 			id,
 			title: document.title,
 			description: document.description,
+			categorie: document.categorie,
 			fileType: document.fileType,
 			fileUrl: `${backendUrl}/api/v1/librairie/${id}/file`,
 			coverImage: document.coverImage ? `${backendUrl}${document.coverImage}` : null,
