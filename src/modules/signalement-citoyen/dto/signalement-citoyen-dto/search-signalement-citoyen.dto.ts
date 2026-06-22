@@ -48,6 +48,17 @@ export class SearchSignalementCitoyenDto {
   longitude?: number;
 
   @ApiPropertyOptional({
+    description:
+      'Rayon de recherche en kilomètres autour de (latitude, longitude). ' +
+      "Si fourni avec latitude et longitude, retourne les signalements situés dans ce rayon, triés du plus proche au plus éloigné.",
+    example: 5,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  radiusKm?: number;
+
+  @ApiPropertyOptional({
     description: 'Filtrer par identifiant du citoyen',
     example: 'u1s2e3r4-5i6d-7h8e-9r0e-1a2b3c4d5e6f',
   })
