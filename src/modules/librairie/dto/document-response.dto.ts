@@ -10,6 +10,9 @@ export class DocumentResponseDto {
   @ApiProperty({ description: "Description du document", example: "Un conte philosophique et poétique", nullable: true })
   description: string | null;
 
+  @ApiProperty({ description: "Catégorie du document", example: "Budget", nullable: true })
+  categorie: string | null;
+
   @ApiProperty({ description: "Type de fichier", example: ".pdf" })
   fileType: string;
 
@@ -39,6 +42,9 @@ export class PublicDocumentResponseDto {
 
   @ApiProperty({ description: "Description du document", nullable: true })
   description: string | null;
+
+  @ApiProperty({ description: "Catégorie du document", example: "Budget", nullable: true })
+  categorie: string | null;
 
   @ApiProperty({ description: "Type de fichier", example: ".pdf" })
   fileType: string;

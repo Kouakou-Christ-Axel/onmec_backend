@@ -22,6 +22,17 @@ export class CreateDocumentDto {
   description?: string;
 
   @ApiProperty({
+    description: 'Catégorie du document',
+    example: 'Budget',
+    required: false,
+  })
+  @IsString({
+    message: 'La catégorie doit être une chaîne de caractères',
+  })
+  @IsOptional()
+  categorie?: string;
+
+  @ApiProperty({
     description: 'ID de l\'utilisateur propriétaire du document',
     example: 1,
   })

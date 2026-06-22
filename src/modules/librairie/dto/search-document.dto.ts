@@ -13,6 +13,17 @@ export class SearchDocumentDto {
 	title?: string;
 
 	@ApiProperty({
+		description: 'Filtrer par catégorie',
+		example: 'Budget',
+		required: false,
+	})
+	@IsString({
+		message: 'La catégorie doit être une chaîne de caractères',
+	})
+	@IsOptional()
+	categorie?: string;
+
+	@ApiProperty({
 		description: 'Page de résultats à récupérer',
 		example: 1,
 		default: 1,

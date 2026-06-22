@@ -99,6 +99,20 @@ export class LibrairieController {
     return this.librairieService.findAllPublic(searchParams);
   }
 
+  @Get('public/categories')
+  @ApiOperation({
+    summary: 'Liste des catégories de documents',
+    description:
+      'Retourne les catégories distinctes des documents, pour alimenter les filtres. Aucune authentification requise.',
+  })
+  @ApiOkResponse({
+    description: 'Liste des catégories',
+    schema: { type: 'array', items: { type: 'string' } },
+  })
+  findCategories() {
+    return this.librairieService.findCategories();
+  }
+
   @Get('public/:id')
   @ApiOperation({ summary: 'Détail public d\'un document', description: 'Retourne les informations publiques d\'un document sans données sensibles. Aucune authentification requise.' })
   @ApiParam({ name: 'id', description: 'Identifiant du document', example: '550e8400-e29b-41d4-a716-446655440000' })

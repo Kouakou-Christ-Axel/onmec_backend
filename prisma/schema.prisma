@@ -50,6 +50,7 @@ model Document {
   id           String   @id @default(uuid())
   title        String
   description  String?
+  categorie    String? // catégorie libre du document (filtrage côté app)
   coverImage   String? // chemin local ou URL vers l'image de couverture
   fileUrl      String // chemin local ou URL vers le fichier uploadé
   fileType     String // ex: "pdf", "docx", "epub"
