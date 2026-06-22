@@ -30,11 +30,14 @@ export class UsersService {
     );
 
     // Créer l'utilisateur (le rôle fourni est respecté, MEMBER par défaut)
+    // L'image téléversée (chemin fourni par le contrôleur) est persistée dans `avatar`.
+    const { image, ...userData } = createUserDto;
     const newUser = await this.prisma.user.create({
       data: {
-        ...createUserDto,
+        ...userData,
         password: hash,
         role: createUserDto.role ?? UserRole.MEMBER,
+        avatar: image,
       },
     });
 
@@ -74,11 +77,13 @@ export class UsersService {
     );
 
     // Créer l'utilisateur
+    const { image, ...userData } = createUserDto;
     const newUser = await this.prisma.user.create({
       data: {
-        ...createUserDto,
+        ...userData,
         password: hash,
         role: UserRole.MEMBER,
+        avatar: image,
       },
     });
 
@@ -157,9 +162,10 @@ export class UsersService {
       throw new NotFoundException('Utilisateur non trouvé');
     }
 
+    const { image, ...userData } = updateUserDto;
     return await this.prisma.user.update({
       where: { id },
-      data: updateUserDto,
+      data: { ...userData, avatar: image },
       omit: { password: true },
     });
   }
@@ -214,11 +220,13 @@ export class UsersService {
   async update(req: Request, updateUserDto: UpdateUserDto) {
     const user = req.user as User;
 
+    // L'image téléversée (chemin fourni par le contrôleur) est persistée dans `avatar`.
+    const { image, ...userData } = updateUserDto;
     const newUser = await this.prisma.user.update({
       where: {
         id: user.id,
       },
-      data: updateUserDto,
+      data: { ...userData, avatar: image },
     });
 
     const { password, ...rest } = newUser;
