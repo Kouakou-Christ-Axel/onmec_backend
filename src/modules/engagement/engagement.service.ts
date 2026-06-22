@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/services/prisma.service';
 import { CreateCommentaireDto } from './dto/create-commentaire.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
@@ -17,6 +17,8 @@ export type EngagementTarget = 'signalement' | 'actualite';
 
 @Injectable()
 export class EngagementService {
+  private readonly logger = new Logger(EngagementService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   /**
@@ -306,41 +308,50 @@ export class EngagementService {
       result.set(id, { likesCount: 0, commentsCount: 0, likedByMe: false }),
     );
 
-    const [likeGroups, commentGroups, myLikes] = await Promise.all([
-      this.prisma.reaction.groupBy({
-        by: [idField as any],
-        where: inFilter,
-        _count: { _all: true },
-      }),
-      this.prisma.commentaire.groupBy({
-        by: [idField as any],
-        where: commentFilter,
-        _count: { _all: true },
-      }),
-      userId
-        ? this.prisma.reaction.findMany({
-            where: { userId, ...inFilter },
-            select: { [idField]: true } as any,
-          })
-        : Promise.resolve([] as any[]),
-    ]);
+    // L'enrichissement (likes/commentaires) est secondaire : en cas d'erreur on
+    // retourne des compteurs à zéro plutôt que de faire échouer toute la liste.
+    try {
+      const [likeGroups, commentGroups, myLikes] = await Promise.all([
+        this.prisma.reaction.groupBy({
+          by: [idField as any],
+          where: inFilter,
+          _count: { _all: true },
+        }),
+        this.prisma.commentaire.groupBy({
+          by: [idField as any],
+          where: commentFilter,
+          _count: { _all: true },
+        }),
+        userId
+          ? this.prisma.reaction.findMany({
+              where: { userId, ...inFilter },
+              select: { [idField]: true } as any,
+            })
+          : Promise.resolve([] as any[]),
+      ]);
 
-    for (const g of likeGroups as any[]) {
-      const id = g[idField];
-      const entry = result.get(id);
-      if (entry) entry.likesCount = g._count._all;
-    }
+      for (const g of likeGroups as any[]) {
+        const id = g[idField];
+        const entry = result.get(id);
+        if (entry) entry.likesCount = g._count._all;
+      }
 
-    for (const g of commentGroups as any[]) {
-      const id = g[idField];
-      const entry = result.get(id);
-      if (entry) entry.commentsCount = g._count._all;
-    }
+      for (const g of commentGroups as any[]) {
+        const id = g[idField];
+        const entry = result.get(id);
+        if (entry) entry.commentsCount = g._count._all;
+      }
 
-    for (const r of myLikes as any[]) {
-      const id = r[idField];
-      const entry = result.get(id);
-      if (entry) entry.likedByMe = true;
+      for (const r of myLikes as any[]) {
+        const id = r[idField];
+        const entry = result.get(id);
+        if (entry) entry.likedByMe = true;
+      }
+    } catch (error) {
+      this.logger.error(
+        `Échec du calcul des statistiques d'engagement (${target}) — compteurs à zéro retournés`,
+        error instanceof Error ? error.stack : String(error),
+      );
     }
 
     return result;
