@@ -129,4 +129,7 @@ export class SubmitAnswerResponseDto {
 
   @ApiProperty({ example: 80 })
   percentage: number;
+
+  @ApiProperty({ example: 80, description: 'Points attribués pour cette soumission.' })
+  pointsGagnes: number;
 }

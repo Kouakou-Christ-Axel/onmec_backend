@@ -1,6 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/services/prisma.service';
+import { GamificationService } from '../gamification/gamification.service';
 import { CreateQuizzDto } from './dto/create-quizz.dto';
 import { UpdateQuizzDto } from './dto/update-quizz.dto';
 import { SubmitAnswerDto } from './dto/submit-answer.dto';
@@ -9,7 +15,14 @@ import { CreateCategorieQuizDto, UpdateCategorieQuizDto } from './dto/create-cat
 
 @Injectable()
 export class QuizzService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(QuizzService.name);
+  // Points attribués par bonne réponse à la complétion d'un quiz.
+  private static readonly POINTS_PAR_BONNE_REPONSE = 10;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly gamification: GamificationService,
+  ) {}
 
   async create(createQuizzDto: CreateQuizzDto, authorId: string) {
     const { title, description, difficulte, categorieId, questions } = createQuizzDto;
@@ -125,12 +138,42 @@ export class QuizzService {
 
     if (!quiz) throw new NotFoundException(`Quiz avec l'ID ${quizId} non trouvé`);
 
+    // Index des questions du quiz + ensemble des choix valides par question,
+    // pour valider que chaque réponse soumise est cohérente avec le quiz.
+    const questionsById = new Map(quiz.questions.map((q) => [q.id, q]));
+
+    const seenQuestions = new Set<string>();
     let correctCount = 0;
     const totalQuestions = quiz.questions.length;
 
+    if (totalQuestions === 0) {
+      throw new BadRequestException('Ce quiz ne contient aucune question.');
+    }
+
     for (const answer of answers) {
-      const question = quiz.questions.find((q) => q.id === answer.questionId);
-      if (question && question.correctId === answer.choiceId) {
+      const question = questionsById.get(answer.questionId);
+      if (!question) {
+        throw new BadRequestException(
+          `La question ${answer.questionId} n'appartient pas à ce quiz.`,
+        );
+      }
+      if (seenQuestions.has(answer.questionId)) {
+        throw new BadRequestException(
+          `Réponse en double pour la question ${answer.questionId}.`,
+        );
+      }
+      seenQuestions.add(answer.questionId);
+
+      const choiceValide = question.choices.some(
+        (c) => c.id === answer.choiceId,
+      );
+      if (!choiceValide) {
+        throw new BadRequestException(
+          `Le choix ${answer.choiceId} n'appartient pas à la question ${answer.questionId}.`,
+        );
+      }
+
+      if (question.correctId === answer.choiceId) {
         correctCount++;
       }
     }
@@ -161,7 +204,32 @@ export class QuizzService {
       },
     });
 
-    return { userQuiz, score, correctCount, totalQuestions, percentage: score };
+    // Attribution des points (gamification) côté serveur, source de vérité.
+    // En cas d'échec, on ne fait pas échouer la soumission : le résultat est
+    // déjà enregistré et le score reste valide.
+    const pointsGagnes = correctCount * QuizzService.POINTS_PAR_BONNE_REPONSE;
+    if (pointsGagnes > 0) {
+      try {
+        await this.gamification.ajouterPoints(userId, {
+          points: pointsGagnes,
+          raison: `quiz:${quiz.title}`,
+        });
+      } catch (error) {
+        this.logger.error(
+          `Échec de l'attribution des points pour le quiz ${quizId}`,
+          error instanceof Error ? error.stack : String(error),
+        );
+      }
+    }
+
+    return {
+      userQuiz,
+      score,
+      correctCount,
+      totalQuestions,
+      percentage: score,
+      pointsGagnes,
+    };
   }
 
   async getUserResults(userId: string) {

@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -24,7 +25,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { User } from '@prisma/client';
+import { User, UserRole } from '@prisma/client';
 import { Request } from 'express';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -51,12 +52,13 @@ export class QuizzController {
   // ─── Quiz ──────────────────────────────────────────────────────────────────
 
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Créer un quiz', description: 'Crée un quiz avec ses questions et choix. L\'utilisateur authentifié devient l\'auteur.' })
+  @ApiOperation({ summary: 'Créer un quiz (Admin)', description: 'Crée un quiz avec ses questions et choix. Réservé aux administrateurs ; l\'utilisateur authentifié devient l\'auteur.' })
   @ApiBody({ type: CreateQuizzDto })
   @ApiCreatedResponse({ description: 'Quiz créé avec succès', type: QuizzResponseDto })
   @ApiUnauthorizedResponse({ description: 'Non authentifié' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Accès réservé aux administrateurs' })
   create(@Req() req: Request, @Body() createQuizzDto: CreateQuizzDto) {
     const user = req.user as User;
     return this.quizService.create(createQuizzDto, user.id);
@@ -65,12 +67,16 @@ export class QuizzController {
   @Post('submit')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Soumettre les réponses', description: 'Enregistre les réponses d\'un utilisateur pour un quiz et calcule son score.' })
+  @ApiOperation({ summary: 'Soumettre les réponses', description: 'Enregistre les réponses de l\'utilisateur authentifié pour un quiz et calcule son score côté serveur.' })
   @ApiBody({ type: SubmitAnswerDto })
   @ApiOkResponse({ description: 'Réponses enregistrées, score calculé', type: SubmitAnswerResponseDto })
   @ApiNotFoundResponse({ description: 'Quiz non trouvé' })
   @ApiUnauthorizedResponse({ description: 'Non authentifié' })
-  submitAnswers(@Body() submitAnswerDto: SubmitAnswerDto) {
+  submitAnswers(@Req() req: Request, @Body() submitAnswerDto: SubmitAnswerDto) {
+    const user = req.user as User;
+    // L'auteur de la soumission est toujours l'utilisateur authentifié : on
+    // ignore tout userId fourni par le client (anti-usurpation).
+    submitAnswerDto.userId = user.id;
     return this.quizService.submitAnswers(submitAnswerDto);
   }
 
@@ -149,11 +155,18 @@ export class QuizzController {
 
   @Get('results/:userId')
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Résultats d\'un utilisateur', description: 'Retourne l\'historique de tous les quiz complétés par un utilisateur.' })
+  @ApiOperation({ summary: 'Résultats d\'un utilisateur', description: 'Retourne l\'historique des quiz complétés. Accessible uniquement à l\'utilisateur lui-même ou à un administrateur.' })
   @ApiParam({ name: 'userId', description: 'Identifiant de l\'utilisateur', example: 'u1b2c3d4-e5f6-7890-abcd-ef1234567890' })
   @ApiOkResponse({ description: 'Résultats récupérés', type: [QuizResultResponseDto] })
   @ApiUnauthorizedResponse({ description: 'Non authentifié' })
-  getUserResults(@Param('userId') userId: string) {
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Accès non autorisé aux résultats d\'un autre utilisateur' })
+  getUserResults(@Req() req: Request, @Param('userId') userId: string) {
+    const user = req.user as User;
+    if (user.id !== userId && user.role !== UserRole.ADMIN) {
+      throw new ForbiddenException(
+        'Vous ne pouvez consulter que vos propres résultats.',
+      );
+    }
     return this.quizService.getUserResults(userId);
   }
 
