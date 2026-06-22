@@ -66,13 +66,13 @@ async function bootstrap() {
 	app.useGlobalInterceptors(new RequestLoggerInterceptor());
 
 	const config = new DocumentBuilder()
-		.setTitle('OnMec API')
+		.setTitle('Citoyen+ API')
 		.setDescription(
-			"API officielle de la plateforme OnMec — application citoyenne de la Côte d'Ivoire. " +
+			"API officielle de la plateforme Citoyen+ — application citoyenne de la Côte d'Ivoire. " +
 			'Permet la gestion des actualités, signalements citoyens, bibliothèque de documents et quiz éducatifs.',
 		)
 		.setVersion('1.0')
-		.setContact('Équipe OnMec', 'https://mec-ci.org', 'contact@mec-ci.org')
+		.setContact('Équipe Citoyen+', 'https://mec-ci.org', 'contact@mec-ci.org')
 		.addBearerAuth(
 			{type: 'http', scheme: 'bearer', bearerFormat: 'JWT', in: 'header'},
 			'JWT',
