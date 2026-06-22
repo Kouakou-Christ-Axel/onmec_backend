@@ -13,6 +13,16 @@ export class SearchSignalementCitoyenDto {
   titre?: string;
 
   @ApiPropertyOptional({
+    description:
+      'Recherche plein texte (insensible à la casse) sur le titre, la description, ' +
+      "l'adresse et le nom de la catégorie du signalement.",
+    example: 'route abidjan',
+  })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @ApiPropertyOptional({
     description: 'Filtrer par identifiant de catégorie',
     example: 'c1a2t3e4g5o6r7i8e9-0a1b-2c3d-4e5f-6g7h8i9j0k1l',
   })
@@ -31,7 +41,7 @@ export class SearchSignalementCitoyenDto {
 
   @ApiPropertyOptional({
     description: 'Filtrer par latitude',
-    example: 5.3600,
+    example: 5.36,
   })
   @IsOptional()
   @Type(() => Number)
@@ -50,7 +60,7 @@ export class SearchSignalementCitoyenDto {
   @ApiPropertyOptional({
     description:
       'Rayon de recherche en kilomètres autour de (latitude, longitude). ' +
-      "Si fourni avec latitude et longitude, retourne les signalements situés dans ce rayon, triés du plus proche au plus éloigné.",
+      'Si fourni avec latitude et longitude, retourne les signalements situés dans ce rayon, triés du plus proche au plus éloigné.',
     example: 5,
   })
   @IsOptional()
@@ -77,7 +87,7 @@ export class SearchSignalementCitoyenDto {
   page?: number;
 
   @ApiPropertyOptional({
-    description: 'Nombre d\'éléments par page',
+    description: "Nombre d'éléments par page",
     example: 10,
     default: 10,
   })

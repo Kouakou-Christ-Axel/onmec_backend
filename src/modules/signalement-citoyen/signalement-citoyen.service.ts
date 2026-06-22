@@ -135,10 +135,24 @@ export class SignalementCitoyenService {
 	 * Récupère tous les signalements avec pagination et filtres
 	 */
 	async findAll(searchDto: SearchSignalementCitoyenDto, userId?: string): Promise<PaginatedResponse<any>> {
-		const {titre, categorieId, statut, latitude, longitude, radiusKm, citoyenId, page = 1, limit = 10} = searchDto;
+		const {titre, search, categorieId, statut, latitude, longitude, radiusKm, citoyenId, page = 1, limit = 10} = searchDto;
 		const where: any = {};
 
 		if (titre) where.titre = {contains: titre, mode: 'insensitive'};
+
+		// Recherche par mot-clé côté serveur : filtre insensible à la casse et en
+		// correspondance partielle (LIKE %term%) sur le titre, la description,
+		// l'adresse et le nom de la catégorie. Si « search » est absent ou vide,
+		// le comportement reste inchangé (rétro-compatibilité).
+		const searchTerm = search?.trim();
+		if (searchTerm) {
+			where.OR = [
+				{titre: {contains: searchTerm, mode: 'insensitive'}},
+				{description: {contains: searchTerm, mode: 'insensitive'}},
+				{adresse: {contains: searchTerm, mode: 'insensitive'}},
+				{categorie: {is: {nom: {contains: searchTerm, mode: 'insensitive'}}}},
+			];
+		}
 		if (categorieId) where.categorieId = categorieId;
 		if (statut) where.statut = statut;
 		// Recherche géographique « autour de » : si un rayon est fourni avec des
