@@ -102,7 +102,7 @@ export class EngagementService {
       this.prisma.commentaire.findMany({
         where,
         include: {
-          user: { select: { id: true, fullname: true } },
+          user: { select: { id: true, fullname: true, avatar: true } },
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
@@ -136,7 +136,7 @@ export class EngagementService {
         ...this.targetWhere(target, targetId),
       },
       include: {
-        user: { select: { id: true, fullname: true } },
+        user: { select: { id: true, fullname: true, avatar: true } },
       },
     });
 
@@ -154,8 +154,7 @@ export class EngagementService {
       auteur: {
         id: commentaire.user?.id ?? null,
         nom: commentaire.user?.fullname ?? null,
-        // Le modèle User ne possède pas encore de champ avatar.
-        avatar: null,
+        avatar: commentaire.user?.avatar ?? null,
       },
     };
   }
@@ -182,7 +181,7 @@ export class EngagementService {
       this.prisma.commentaire.findMany({
         where,
         include: {
-          user: { select: { id: true, fullname: true } },
+          user: { select: { id: true, fullname: true, avatar: true } },
           signalement: { select: { id: true, titre: true } },
           actualite: { select: { id: true, title: true } },
         },
@@ -219,7 +218,7 @@ export class EngagementService {
       where: { id },
       data: { masque },
       include: {
-        user: { select: { id: true, fullname: true } },
+        user: { select: { id: true, fullname: true, avatar: true } },
         signalement: { select: { id: true, titre: true } },
         actualite: { select: { id: true, title: true } },
       },
