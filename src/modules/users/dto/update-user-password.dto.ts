@@ -3,6 +3,18 @@ import { IsNotEmpty, IsOptional, MaxLength, Matches } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class UpdateUserPasswordDto {
+  // OLD PASSWORD
+  @ApiProperty({
+    description: "le mot de passe actuel de l'utilisateur",
+    example: 'Password01@',
+    required: true,
+    maxLength: 15,
+  })
+  @IsNotEmpty()
+  @MaxLength(15)
+  @Transform(({ value }) => value?.trim())
+  oldPassword: string;
+
   // PASSWORD
   @ApiProperty({
     description: "le mot de passe de l'utilisateur",
