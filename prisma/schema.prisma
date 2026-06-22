@@ -269,6 +269,8 @@ model Commentaire {
   actualiteId String?    @db.Uuid
   actualite   Actualite? @relation(fields: [actualiteId], references: [id], onDelete: Cascade)
 
+  masque Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
