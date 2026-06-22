@@ -20,9 +20,9 @@ export class EmailService {
       await axios.post(
         RESEND_API_URL,
         {
-          from: `ONMEC <${this.from}>`,
+          from: `Citoyen+ <${this.from}>`,
           to: [email],
-          subject: `Votre code de vérification ONMEC : ${otp}`,
+          subject: `Votre code de vérification Citoyen+ : ${otp}`,
           html: this.buildOtpEmail(fullname, otp),
         },
         {
@@ -48,9 +48,9 @@ export class EmailService {
       await axios.post(
         RESEND_API_URL,
         {
-          from: `ONMEC <${this.from}>`,
+          from: `Citoyen+ <${this.from}>`,
           to: [email],
-          subject: `Réinitialisation de votre mot de passe ONMEC : ${otp}`,
+          subject: `Réinitialisation de votre mot de passe Citoyen+ : ${otp}`,
           html: this.buildPasswordResetEmail(fullname, otp),
         },
         {
@@ -83,7 +83,7 @@ export class EmailService {
                      style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
                 <tr>
                   <td style="background:#1a56db;padding:24px 32px;">
-                    <h1 style="margin:0;color:#fff;font-size:22px;">ONMEC</h1>
+                    <h1 style="margin:0;color:#fff;font-size:22px;">Citoyen+</h1>
                   </td>
                 </tr>
                 <tr>
@@ -134,7 +134,7 @@ export class EmailService {
                      style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
                 <tr>
                   <td style="background:#1a56db;padding:24px 32px;">
-                    <h1 style="margin:0;color:#fff;font-size:22px;">ONMEC</h1>
+                    <h1 style="margin:0;color:#fff;font-size:22px;">Citoyen+</h1>
                   </td>
                 </tr>
                 <tr>
@@ -160,7 +160,7 @@ export class EmailService {
                     </p>
                     <hr style="border:none;border-top:1px solid #eee;margin:24px 0;"/>
                     <p style="font-size:12px;color:#aaa;text-align:center;">
-                      Si vous n'avez pas créé de compte sur ONMEC, ignorez cet email.
+                      Si vous n'avez pas créé de compte sur Citoyen+, ignorez cet email.
                     </p>
                   </td>
                 </tr>

@@ -282,7 +282,7 @@ async function main() {
 
   // ── ACTUALITES ────────────────────────────────────────────────────────────────
   const actualitesData = [
-    { id: ID.actualites.a1, slug: 'lancement-plateforme-citoyenne-onmec', title: 'Lancement de la plateforme citoyenne ONMEC', date: new Date('2025-01-15'), excerpt: 'La plateforme ONMEC ouvre ses portes pour connecter les citoyens ivoiriens à leurs institutions.', content: '<p>La plateforme numérique ONMEC a été officiellement lancée ce 15 janvier 2025.</p>', imageUrl: '/images/actualites/lancement-onmec.jpg' },
+    { id: ID.actualites.a1, slug: 'lancement-plateforme-citoyenne-onmec', title: 'Lancement de la plateforme citoyenne Citoyen+', date: new Date('2025-01-15'), excerpt: 'La plateforme Citoyen+ ouvre ses portes pour connecter les citoyens ivoiriens à leurs institutions.', content: '<p>La plateforme numérique Citoyen+ a été officiellement lancée ce 15 janvier 2025.</p>', imageUrl: '/images/actualites/lancement-onmec.jpg' },
     { id: ID.actualites.a2, slug: 'journee-nationale-citoyennete-2025', title: 'Journée nationale de la citoyenneté 2025', date: new Date('2025-03-10'), excerpt: "Le 10 mars, la Côte d'Ivoire célèbre la citoyenneté active et la participation civique.", content: "<p>À l'occasion de la Journée nationale de la citoyenneté, plusieurs activités sont organisées à travers le pays.</p>", imageUrl: '/images/actualites/journee-citoyennete.jpg' },
     { id: ID.actualites.a3, slug: 'amelioration-voirie-abidjan-2025', title: "Programme d'amélioration de la voirie à Abidjan", date: new Date('2025-05-20'), excerpt: 'Le gouvernement annonce un vaste programme de réhabilitation des routes abidjanaises.', content: "<p>Dans le cadre du Plan National de Développement, le District d'Abidjan lance un programme pour la réhabilitation de plus de 200 km de voirie urbaine.</p>", imageUrl: '/images/actualites/voirie-abidjan.jpg' },
   ];
@@ -297,7 +297,7 @@ async function main() {
   const documentsData = [
     { id: ID.documents.d1, title: "Constitution de la République de Côte d'Ivoire", description: 'Texte intégral de la Constitution ivoirienne révisée en 2016.', fileUrl: '/documents/constitution-ci-2016.pdf', fileType: 'pdf', uploadedById: admin.id },
     { id: ID.documents.d2, title: 'Guide du citoyen ivoirien', description: 'Guide pratique sur les droits, devoirs et démarches administratives du citoyen.', fileUrl: '/documents/guide-citoyen-ci.pdf', fileType: 'pdf', uploadedById: admin.id },
-    { id: ID.documents.d3, title: 'Rapport annuel ONMEC 2024', description: 'Bilan des activités et signalements traités par la plateforme en 2024.', fileUrl: '/documents/rapport-onmec-2024.pdf', fileType: 'pdf', uploadedById: admin.id },
+    { id: ID.documents.d3, title: 'Rapport annuel Citoyen+ 2024', description: 'Bilan des activités et signalements traités par la plateforme en 2024.', fileUrl: '/documents/rapport-onmec-2024.pdf', fileType: 'pdf', uploadedById: admin.id },
   ];
 
   for (const d of documentsData) {
@@ -308,8 +308,8 @@ async function main() {
 
   // ── NOTIFICATIONS ─────────────────────────────────────────────────────────────
   const notificationsData = [
-    { id: ID.notifications.n1, title: 'Bienvenue sur ONMEC !', body: 'Votre compte a été créé avec succès. Découvrez la plateforme et participez à la vie citoyenne.', type: 'welcome', isRead: false, userId: member1.id },
-    { id: ID.notifications.n2, title: 'Bienvenue sur ONMEC !', body: 'Votre compte a été créé avec succès. Découvrez la plateforme et participez à la vie citoyenne.', type: 'welcome', isRead: false, userId: member2.id },
+    { id: ID.notifications.n1, title: 'Bienvenue sur Citoyen+ !', body: 'Votre compte a été créé avec succès. Découvrez la plateforme et participez à la vie citoyenne.', type: 'welcome', isRead: false, userId: member1.id },
+    { id: ID.notifications.n2, title: 'Bienvenue sur Citoyen+ !', body: 'Votre compte a été créé avec succès. Découvrez la plateforme et participez à la vie citoyenne.', type: 'welcome', isRead: false, userId: member2.id },
     { id: ID.notifications.n3, title: 'Votre signalement est en cours de traitement', body: "Votre signalement 'Dépôt sauvage d'ordures rue des Jardins' est désormais pris en charge.", type: 'signalement_update', isRead: true, userId: member2.id },
     { id: ID.notifications.n4, title: 'Nouveau quiz disponible', body: "Un nouveau quiz 'Les bases de la citoyenneté' vient d'être publié. Testez vos connaissances !", type: 'new_quiz', isRead: false, userId: member1.id },
   ];
