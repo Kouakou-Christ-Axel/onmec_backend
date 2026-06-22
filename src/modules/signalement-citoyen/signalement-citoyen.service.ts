@@ -135,13 +135,24 @@ export class SignalementCitoyenService {
 	 * Récupère tous les signalements avec pagination et filtres
 	 */
 	async findAll(searchDto: SearchSignalementCitoyenDto, userId?: string): Promise<PaginatedResponse<any>> {
-		const {titre, categorieId, statut, latitude, longitude, citoyenId, page = 1, limit = 10} = searchDto;
+		const {titre, categorieId, statut, latitude, longitude, radiusKm, citoyenId, page = 1, limit = 10} = searchDto;
 		const where: any = {};
 
 		if (titre) where.titre = {contains: titre, mode: 'insensitive'};
 		if (categorieId) where.categorieId = categorieId;
 		if (statut) where.statut = statut;
-		if (latitude && longitude) {
+		// Recherche géographique « autour de » : si un rayon est fourni avec des
+		// coordonnées, on filtre via une boîte englobante (bounding box) puis on
+		// trie le résultat par distance réelle (Haversine). Sans rayon, on
+		// conserve l'ancien comportement (égalité exacte) pour rétro-compatibilité.
+		const useRadius =
+			latitude !== undefined && longitude !== undefined && radiusKm !== undefined && radiusKm > 0;
+		if (useRadius) {
+			const latDelta = radiusKm! / 111.0;
+			const lngDelta = radiusKm! / (111.32 * Math.cos((latitude! * Math.PI) / 180) || 1);
+			where.latitude = {gte: latitude! - latDelta, lte: latitude! + latDelta};
+			where.longitude = {gte: longitude! - lngDelta, lte: longitude! + lngDelta};
+		} else if (latitude && longitude) {
 			where.latitude = latitude;
 			where.longitude = longitude;
 		}
@@ -177,10 +188,30 @@ export class SignalementCitoyenService {
 			userId,
 		);
 
-		const data = signalements.map((s) => ({
+		let data = signalements.map((s) => ({
 			...s,
 			...(stats.get(s.id) ?? {likesCount: 0, commentsCount: 0, likedByMe: false}),
 		}));
+
+		// Tri par distance réelle du plus proche au plus éloigné lorsqu'une
+		// recherche par rayon est demandée.
+		if (useRadius) {
+			const toRad = (deg: number) => (deg * Math.PI) / 180;
+			const distanceKm = (lat: number, lng: number) => {
+				const R = 6371;
+				const dLat = toRad(lat - latitude!);
+				const dLng = toRad(lng - longitude!);
+				const a =
+					Math.sin(dLat / 2) ** 2 +
+					Math.cos(toRad(latitude!)) * Math.cos(toRad(lat)) * Math.sin(dLng / 2) ** 2;
+				return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+			};
+			data = data.sort(
+				(a, b) =>
+					distanceKm(Number(a.latitude), Number(a.longitude)) -
+					distanceKm(Number(b.latitude), Number(b.longitude)),
+			);
+		}
 
 		return {
 			data,
