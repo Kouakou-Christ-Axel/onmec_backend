@@ -15,6 +15,8 @@ import { permissionsByRole, RolePermissions } from 'src/common/constantes/permis
 import { RegisterUserDto } from '../dto/register-user.dto';
 import { VerifyEmailOtpDto } from '../dto/verify-email-otp.dto';
 import { ResendEmailOtpDto } from '../dto/resend-email-otp.dto';
+import { ForgotPasswordDto } from '../dto/forgot-password.dto';
+import { ResetPasswordDto } from '../dto/reset-password.dto';
 import { EmailService } from './email.service';
 import { totp, authenticator } from 'otplib';
 
@@ -281,6 +283,83 @@ export class AuthService {
       }
       this.logger.error('Erreur lors du rafraîchissement du token', error);
       throw new BadRequestException('Erreur lors du rafraîchissement du token');
+    }
+  }
+
+  /**
+   * Mot de passe oublié — envoie un code OTP de réinitialisation par email.
+   * Retourne toujours un message générique pour ne pas révéler si l'email existe.
+   */
+  async forgotPassword(dto: ForgotPasswordDto): Promise<{ message: string }> {
+    const genericResponse = {
+      message:
+        'Si un compte est associé à cette adresse, un code de réinitialisation vient d\'être envoyé.',
+    };
+
+    try {
+      const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+
+      // On ne révèle pas l'inexistence du compte.
+      if (!user) {
+        return genericResponse;
+      }
+
+      const { secret, otp } = this.generateEmailOtp();
+
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { otpSecret: secret },
+      });
+
+      await this.emailService.sendPasswordResetOtp(user.email, user.fullname, otp);
+
+      this.logger.log({ action: 'PASSWORD_RESET_REQUESTED', userId: user.id, email: user.email });
+
+      return genericResponse;
+    } catch (error) {
+      this.logger.error('Erreur lors de la demande de réinitialisation', error);
+      // On reste générique même en cas d'erreur interne d'envoi.
+      return genericResponse;
+    }
+  }
+
+  /**
+   * Réinitialise le mot de passe à partir du code OTP reçu par email.
+   */
+  async resetPassword(dto: ResetPasswordDto): Promise<{ message: string }> {
+    try {
+      const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+
+      if (!user) {
+        throw new NotFoundException('Utilisateur non trouvé');
+      }
+
+      if (!user.otpSecret) {
+        throw new BadRequestException(
+          'Aucune demande de réinitialisation en attente — utilisez /auth/forgot-password',
+        );
+      }
+
+      if (!this.checkOtp(user.otpSecret, dto.otp)) {
+        throw new BadRequestException('Code de réinitialisation invalide ou expiré');
+      }
+
+      const hashedPassword = await bcrypt.hash(dto.password, 10);
+
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { password: hashedPassword, otpSecret: null },
+      });
+
+      this.logger.log({ action: 'PASSWORD_RESET_SUCCESS', userId: user.id, email: user.email });
+
+      return { message: 'Votre mot de passe a été réinitialisé avec succès.' };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      this.logger.error('Erreur lors de la réinitialisation du mot de passe', error);
+      throw new BadRequestException('Erreur lors de la réinitialisation du mot de passe');
     }
   }
 }

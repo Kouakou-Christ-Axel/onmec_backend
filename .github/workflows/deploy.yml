@@ -99,6 +99,8 @@ jobs:
             nvm use default
             cd /var/www/onmec/backend
 
+            pnpm install --frozen-lockfile
+
             [ -d dist ] && cp -r dist dist_backup || true
 
             if ! pnpm exec prisma generate || ! pnpm build; then
