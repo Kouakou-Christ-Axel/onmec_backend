@@ -34,9 +34,9 @@ export class SignalementCitoyenDto {
 
   @ApiProperty({
     description: 'Identifiant de la catégorie du signalement',
-    example: 'c1a2t3e4g5o6r7i8e9-0a1b-2c3d-4e5f-6g7h8i9j0k1l',
+    example: '11000000-0000-0000-0000-000000000001',
   })
-  @IsUUID('4', {
+  @IsUUID('all', {
     message: 'L\'identifiant de la catégorie doit être un UUID valide',
   })
   @Expose()
@@ -121,7 +121,7 @@ export class SignalementCitoyenDto {
     required: false,
   })
   @IsOptional()
-  @IsUUID('4', {
+  @IsUUID('all', {
     message: 'L\'identifiant du citoyen doit être un UUID valide',
   })
   @Expose()
