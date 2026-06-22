@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -87,5 +88,34 @@ export class ActualiteEngagementController {
   ) {
     const user = req.user as User;
     return this.engagementService.createCommentaire('actualite', id, user.id, dto);
+  }
+
+  @Delete(':id/commentaires/:commentaireId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT')
+  @ApiOperation({
+    summary: "Supprimer un commentaire d'une actualité",
+    description:
+      "Supprime un commentaire. Autorisé à l'auteur du commentaire ou à un administrateur.",
+  })
+  @ApiParam({ name: 'id', description: "Identifiant de l'actualité" })
+  @ApiParam({ name: 'commentaireId', description: 'Identifiant du commentaire' })
+  @ApiResponse({ status: HttpStatus.NO_CONTENT, description: 'Commentaire supprimé' })
+  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Non authentifié' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Action non autorisée' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Commentaire non trouvé' })
+  deleteCommentaire(
+    @Param('id') id: string,
+    @Param('commentaireId') commentaireId: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as User;
+    return this.engagementService.deleteOwnCommentaire(
+      'actualite',
+      id,
+      commentaireId,
+      user,
+    );
   }
 }
