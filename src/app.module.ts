@@ -16,6 +16,7 @@ import { NotificationModule } from './modules/notification/notification.module';
 import { ActualitesModule } from './modules/actualites/actualites.module';
 import { EngagementModule } from './modules/engagement/engagement.module';
 import { HealthModule } from './health/health.module';
+import { GamificationModule } from './modules/gamification/gamification.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { HealthModule } from './health/health.module';
     NotificationModule,
     ActualitesModule,
     EngagementModule,
+    GamificationModule,
     HealthModule,
   ],
 })

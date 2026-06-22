@@ -37,6 +37,8 @@ model User {
   Quiz               Quiz[]               @relation("QuizAuthor")
   Reaction           Reaction[]
   Commentaire        Commentaire[]
+  Gamification       UserGamification?
+  PointTransaction   PointTransaction[]
 
   @@map("users")
 }
@@ -277,4 +279,34 @@ model Commentaire {
   @@index([signalementId])
   @@index([actualiteId])
   @@map("commentaires")
+}
+
+// État de gamification d'un utilisateur (points et niveau courants).
+// Une ligne unique par utilisateur (relation 1-1).
+model UserGamification {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @unique @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  points Int @default(0)
+  niveau Int @default(1)
+
+  updatedAt DateTime @updatedAt
+
+  @@map("user_gamification")
+}
+
+// Historique des attributions de points (audit / traçabilité).
+model PointTransaction {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  points Int
+  raison String @db.VarChar
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("point_transactions")
 }
