@@ -241,10 +241,29 @@ export class UsersService {
   ) {
     const user = req.user as User;
 
-    const { password: pass, confirmPassword } = updateUserPasswordDto;
+    const { oldPassword, password: pass, confirmPassword } = updateUserPasswordDto;
 
     if (pass !== confirmPassword) {
       throw new BadRequestException('Les mots de passe ne correspondent pas');
+    }
+
+    // Récupérer le hash actuel (exclu de req.user) pour vérifier l'ancien mot de passe
+    const currentUser = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      select: { password: true },
+    });
+
+    if (!currentUser) {
+      throw new NotFoundException('Utilisateur non trouvé');
+    }
+
+    const isOldPasswordValid = await bcrypt.compare(
+      oldPassword,
+      currentUser.password,
+    );
+
+    if (!isOldPasswordValid) {
+      throw new BadRequestException('Le mot de passe actuel est incorrect');
     }
 
     const salt = await bcrypt.genSalt();
