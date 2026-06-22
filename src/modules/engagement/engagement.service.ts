@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { User, UserRole } from '@prisma/client';
 import { PrismaService } from '../../database/services/prisma.service';
 import { CreateCommentaireDto } from './dto/create-commentaire.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
@@ -143,6 +149,44 @@ export class EngagementService {
     });
 
     return this.mapCommentaire(commentaire);
+  }
+
+  /**
+   * Supprime un commentaire d'une cible. Autorisé uniquement à l'auteur du
+   * commentaire ou à un administrateur.
+   */
+  async deleteOwnCommentaire(
+    target: EngagementTarget,
+    targetId: string,
+    commentaireId: string,
+    user: User,
+  ): Promise<void> {
+    const commentaire = await this.prisma.commentaire.findUnique({
+      where: { id: commentaireId },
+      select: { id: true, userId: true, signalementId: true, actualiteId: true },
+    });
+
+    // On renvoie 404 si le commentaire n'existe pas ou n'appartient pas à la
+    // cible indiquée (évite aussi de divulguer son existence ailleurs).
+    const belongsToTarget =
+      target === 'signalement'
+        ? commentaire?.signalementId === targetId
+        : commentaire?.actualiteId === targetId;
+    if (!commentaire || !belongsToTarget) {
+      throw new NotFoundException(
+        `Commentaire avec l'id ${commentaireId} introuvable`,
+      );
+    }
+
+    const isOwner = commentaire.userId === user.id;
+    const isAdmin = user.role === UserRole.ADMIN;
+    if (!isOwner && !isAdmin) {
+      throw new ForbiddenException(
+        'Vous ne pouvez supprimer que vos propres commentaires',
+      );
+    }
+
+    await this.prisma.commentaire.delete({ where: { id: commentaireId } });
   }
 
   /**
