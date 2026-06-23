@@ -114,16 +114,11 @@ export class SignalementCitoyenController {
 		return this.signalementCitoyenService.findAll(searchDto, user?.id);
 	}
 
-	@Get('utilisateur/:citoyenId')
+	@Get('me')
 	@ApiOperation({
-		summary: "Récupérer les signalements d'un citoyen donné",
+		summary: "Récupérer les signalements de l'utilisateur connecté",
 		description:
-			"Retourne la liste paginée des signalements créés par le citoyen identifié par citoyenId. Utilisé par l'écran profil pour n'afficher que les signalements de l'utilisateur.",
-	})
-	@ApiParam({
-		name: 'citoyenId',
-		description: 'Identifiant unique du citoyen auteur des signalements',
-		example: 'a1b2c3d4-e5f6-7g8h-9i0j-k1l2m3n4o5p6',
+			"Retourne la liste paginée des signalements créés par l'utilisateur authentifié. L'identifiant du citoyen est déduit du JWT. Utilisé par l'écran profil pour n'afficher que les signalements de l'utilisateur.",
 	})
 	@ApiResponse({
 		status: HttpStatus.OK,
@@ -147,19 +142,22 @@ export class SignalementCitoyenController {
 			},
 		},
 	})
-	@UseGuards(OptionalJwtAuthGuard)
-	findByCitoyen(
-		@Param('citoyenId') citoyenId: string,
+	@ApiResponse({
+		status: HttpStatus.UNAUTHORIZED,
+		description: 'Non authentifié',
+	})
+	@UseGuards(JwtAuthGuard)
+	findMine(
 		@Query('page') page: string,
 		@Query('limit') limit: string,
 		@Req() req: Request,
 	) {
-		const user = req.user as User | undefined;
+		const user = req.user as User;
 		return this.signalementCitoyenService.findByCitoyen(
-			citoyenId,
+			user.id,
 			Number(page) > 0 ? Number(page) : 1,
 			Number(limit) > 0 ? Number(limit) : 10,
-			user?.id,
+			user.id,
 		);
 	}
 

@@ -242,9 +242,10 @@ export class SignalementCitoyenService {
 	 * Récupère les signalements d'un citoyen donné (paginés).
 	 *
 	 * Contrairement à findAll qui sert de flux/carte publique de l'ensemble des
-	 * signalements, cette route ne renvoie que les signalements dont l'auteur est
-	 * `citoyenId`. Elle est utilisée notamment par l'écran profil de l'app mobile
-	 * pour afficher « Mes signalements » et le compteur associé.
+	 * signalements, cette méthode ne renvoie que les signalements dont l'auteur
+	 * est `citoyenId`. Elle alimente la route `GET /signalement-citoyen/me`
+	 * (citoyenId déduit du JWT) utilisée par l'écran profil pour afficher
+	 * « Mes signalements » et le compteur associé.
 	 *
 	 * @param citoyenId - Identifiant du citoyen auteur des signalements
 	 * @param page - Numéro de page (défaut 1)
