@@ -239,6 +239,73 @@ export class SignalementCitoyenService {
 	}
 
 	/**
+	 * Récupère les signalements d'un citoyen donné (paginés).
+	 *
+	 * Contrairement à findAll qui sert de flux/carte publique de l'ensemble des
+	 * signalements, cette route ne renvoie que les signalements dont l'auteur est
+	 * `citoyenId`. Elle est utilisée notamment par l'écran profil de l'app mobile
+	 * pour afficher « Mes signalements » et le compteur associé.
+	 *
+	 * @param citoyenId - Identifiant du citoyen auteur des signalements
+	 * @param page - Numéro de page (défaut 1)
+	 * @param limit - Taille de page (défaut 10)
+	 * @param userId - Identifiant du visiteur connecté (pour likedByMe)
+	 */
+	async findByCitoyen(
+		citoyenId: string,
+		page = 1,
+		limit = 10,
+		userId?: string,
+	): Promise<PaginatedResponse<any>> {
+		const where = {citoyenId};
+
+		const [total, signalements] = await Promise.all([
+			this.prisma.signalementCitoyen.count({where}),
+			this.prisma.signalementCitoyen.findMany({
+				where,
+				include: {
+					categorie: true,
+					citoyen: {
+						select: {
+							id: true,
+							fullname: true,
+							email: true,
+						},
+					},
+				},
+				orderBy: {
+					createdAt: 'desc',
+				},
+				skip: (page - 1) * limit,
+				take: limit,
+			}),
+		]);
+
+		const totalPages = Math.ceil(total / limit);
+
+		const stats = await this.engagementService.getEngagementStats(
+			'signalement',
+			signalements.map((s) => s.id),
+			userId,
+		);
+
+		const data = signalements.map((s) => ({
+			...s,
+			...(stats.get(s.id) ?? {likesCount: 0, commentsCount: 0, likedByMe: false}),
+		}));
+
+		return {
+			data,
+			meta: {
+				total,
+				page,
+				limit,
+				totalPages,
+			},
+		};
+	}
+
+	/**
 	 * Récupère un signalement par son ID
 	 */
 	async findOne(id: string, userId?: string) {

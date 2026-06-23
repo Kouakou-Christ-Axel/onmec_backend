@@ -114,6 +114,55 @@ export class SignalementCitoyenController {
 		return this.signalementCitoyenService.findAll(searchDto, user?.id);
 	}
 
+	@Get('utilisateur/:citoyenId')
+	@ApiOperation({
+		summary: "Récupérer les signalements d'un citoyen donné",
+		description:
+			"Retourne la liste paginée des signalements créés par le citoyen identifié par citoyenId. Utilisé par l'écran profil pour n'afficher que les signalements de l'utilisateur.",
+	})
+	@ApiParam({
+		name: 'citoyenId',
+		description: 'Identifiant unique du citoyen auteur des signalements',
+		example: 'a1b2c3d4-e5f6-7g8h-9i0j-k1l2m3n4o5p6',
+	})
+	@ApiResponse({
+		status: HttpStatus.OK,
+		description: 'Liste des signalements du citoyen récupérée avec succès',
+		schema: {
+			type: 'object',
+			properties: {
+				data: {
+					type: 'array',
+					items: {$ref: '#/components/schemas/SignalementCitoyenDto'},
+				},
+				meta: {
+					type: 'object',
+					properties: {
+						total: {type: 'number', example: 4},
+						page: {type: 'number', example: 1},
+						limit: {type: 'number', example: 10},
+						totalPages: {type: 'number', example: 1},
+					},
+				},
+			},
+		},
+	})
+	@UseGuards(OptionalJwtAuthGuard)
+	findByCitoyen(
+		@Param('citoyenId') citoyenId: string,
+		@Query('page') page: string,
+		@Query('limit') limit: string,
+		@Req() req: Request,
+	) {
+		const user = req.user as User | undefined;
+		return this.signalementCitoyenService.findByCitoyen(
+			citoyenId,
+			Number(page) > 0 ? Number(page) : 1,
+			Number(limit) > 0 ? Number(limit) : 10,
+			user?.id,
+		);
+	}
+
 	@Get(':id')
 	@ApiOperation({
 		summary: 'Récupérer un signalement par son ID',
