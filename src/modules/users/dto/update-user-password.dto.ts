@@ -8,10 +8,8 @@ export class UpdateUserPasswordDto {
     description: "le mot de passe actuel de l'utilisateur",
     example: 'Password01@',
     required: true,
-    maxLength: 15,
   })
   @IsNotEmpty()
-  @MaxLength(15)
   @Transform(({ value }) => value?.trim())
   oldPassword: string;
 
