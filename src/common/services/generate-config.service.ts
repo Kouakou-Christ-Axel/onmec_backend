@@ -19,7 +19,9 @@ export class GenerateConfigService {
                 },
             }),
             fileFilter: (req, file, cb) => {
-                if (!file.originalname.match(/\.(jpg|jpeg|png|gif|webp|svg)$/)) {
+                // Insensible à la casse + formats iOS (heic/heif) pour éviter
+                // les rejets d'images valides (ex: IMG_1234.JPG, photo.HEIC).
+                if (!file.originalname.match(/\.(jpg|jpeg|png|gif|webp|svg|heic|heif)$/i)) {
                     return cb(new Error('Seul les fichiers image sont acceptés'), false);
                 }
                 cb(null, true);
@@ -40,7 +42,8 @@ export class GenerateConfigService {
                 },
             }),
             fileFilter: (req, file, cb) => {
-                if (!file.originalname.match(/\.(jpg|jpeg|png|gif|webp|svg)$/)) {
+                // Insensible à la casse + formats iOS (heic/heif).
+                if (!file.originalname.match(/\.(jpg|jpeg|png|gif|webp|svg|heic|heif)$/i)) {
                     return cb(new Error('Seuls les fichiers image sont acceptés'), false);
                 }
                 cb(null, true);
