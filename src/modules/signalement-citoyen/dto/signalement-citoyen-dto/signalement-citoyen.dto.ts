@@ -1,4 +1,4 @@
-import { StatutSignalement, User } from '@prisma/client';
+import { StatutSignalement, User } from '../../../../generated/prisma/client';
 import { CategorieSignalementDto } from '../categorie-signalement-dto/categorie-signalement.dto';
 import {ApiProperty} from "@nestjs/swagger";
 import {Expose, Type} from "class-transformer";

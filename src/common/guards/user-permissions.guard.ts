@@ -2,7 +2,7 @@ import { permissionsByRole, RolePermissions } from 'src/common/constantes/permis
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Modules } from 'src/common/enum/module-enum';
-import { UserRole } from '@prisma/client';
+import { UserRole } from '../../generated/prisma/client';
 
 @Injectable()
 export class UserPermissionsGuard implements CanActivate {

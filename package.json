@@ -118,7 +118,6 @@
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "moduleNameMapper": {
-      "^@prisma/client$": "<rootDir>/generated/prisma",
       "^src/(.*)$": "<rootDir>/$1"
     },
     "transform": {

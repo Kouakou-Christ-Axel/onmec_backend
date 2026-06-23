@@ -4,7 +4,7 @@ import {UpdateActualiteDto} from './dto/update-actualite.dto';
 import {PrismaService} from 'src/database/services/prisma.service';
 import slugify from '../../../utils/slugify';
 import {ActualitesSearchDto} from './dto/actualites-search.dto';
-import {Prisma} from '@prisma/client';
+import {Prisma} from '../../generated/prisma/client';
 import {ActualiteEntity} from "./entities/actualite.entity";
 import {ConfigService} from '@nestjs/config';
 import {EngagementService} from '../engagement/engagement.service';

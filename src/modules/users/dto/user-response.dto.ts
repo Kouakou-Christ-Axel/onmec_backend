@@ -1,6 +1,6 @@
 // src/modules/users/dto/user-response.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
+import { UserRole } from '../../../generated/prisma/client';
 
 export class UserResponseDto {
   @ApiProperty({ example: 'u1b2c3d4-e5f6-7890-abcd-ef1234567890' })

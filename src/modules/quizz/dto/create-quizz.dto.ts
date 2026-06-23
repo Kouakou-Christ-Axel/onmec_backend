@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsOptional, IsArray, ValidateNested, IsBoolean, IsEnum } from 'class-validator';
 import { Type } from 'class-transformer';
-import { QuizDifficulte } from '@prisma/client';
+import { QuizDifficulte } from '../../../generated/prisma/client';
 
 export class CreateChoiceDto {
   @ApiProperty({ description: 'Texte du choix', example: 'Abidjan' })

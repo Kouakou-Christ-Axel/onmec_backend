@@ -32,7 +32,7 @@ import { DocumentResponseDto, PublicDocumentResponseDto } from './dto/document-r
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
-import { User } from '@prisma/client';
+import { User } from '../../generated/prisma/client';
 import { SearchDocumentDto } from './dto/search-document.dto';
 import { UploadValidationPipe } from '../image-processing/upload-validation/upload-validation.pipe';
 

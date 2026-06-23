@@ -6,7 +6,7 @@ import {PrismaService} from '../../database/services/prisma.service';
 import {promises as fs} from 'fs';
 import * as path from 'path';
 import {PaginatedResponse} from './dto/signalement-citoyen-dto/paginated-response.dto';
-import {StatutSignalement} from "@prisma/client";
+import {StatutSignalement} from "../../generated/prisma/client";
 import {EngagementService} from '../engagement/engagement.service';
 
 @Injectable()

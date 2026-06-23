@@ -29,15 +29,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Cache Prisma client
-        id: prisma-cache
-        uses: actions/cache@v4
-        with:
-          path: node_modules/.prisma
-          key: prisma-${{ runner.os }}-${{ hashFiles('prisma/schema.prisma') }}
-
+      # Le client Prisma (provider prisma-client) est généré dans
+      # src/generated/prisma et compilé par le build : on le régénère
+      # systématiquement (pas de cache conditionnel qui le laisserait absent).
       - name: Generate Prisma client
-        if: steps.prisma-cache.outputs.cache-hit != 'true'
         run: pnpm exec prisma generate
         env:
           DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy

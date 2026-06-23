@@ -14,7 +14,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
+import { UserRole } from '../../../generated/prisma/client';
 import { Request } from 'express';
 import { UserRoles } from 'src/common/decorators/user-roles.decorator';
 import { UserRolesGuard } from 'src/common/guards/user-roles.guard';
