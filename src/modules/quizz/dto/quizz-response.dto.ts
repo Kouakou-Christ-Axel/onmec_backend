@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { QuizDifficulte } from '@prisma/client';
+import { QuizDifficulte } from '../../../generated/prisma/client';
 
 export class ChoiceResponseDto {
   @ApiProperty({ example: 'c1b2c3d4-e5f6-7890-abcd-ef1234567890' })

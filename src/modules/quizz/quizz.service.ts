@@ -4,7 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../database/services/prisma.service';
 import { GamificationService } from '../gamification/gamification.service';
 import { CreateQuizzDto } from './dto/create-quizz.dto';

@@ -1,4 +1,4 @@
-import { UserRole } from '@prisma/client';
+import { UserRole } from '../../generated/prisma/client';
 import { Modules } from '../enum/module-enum';
 // chemin selon ton projet
 

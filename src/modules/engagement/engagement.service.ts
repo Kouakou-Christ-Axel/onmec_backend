@@ -4,7 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { User, UserRole } from '@prisma/client';
+import { User, UserRole } from '../../generated/prisma/client';
 import { PrismaService } from '../../database/services/prisma.service';
 import { CreateCommentaireDto } from './dto/create-commentaire.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';

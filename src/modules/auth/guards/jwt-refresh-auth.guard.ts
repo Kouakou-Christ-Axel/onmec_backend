@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common/decorators';
 import { AuthGuard } from '@nestjs/passport';
 import { ExecutionContext } from '@nestjs/common';
 import { UnauthorizedException } from '@nestjs/common';
-import { User } from '@prisma/client';
+import { User } from '../../../generated/prisma/client';
 
 @Injectable()
 export class JwtRefreshAuthGuard extends AuthGuard('jwt-refresh') {

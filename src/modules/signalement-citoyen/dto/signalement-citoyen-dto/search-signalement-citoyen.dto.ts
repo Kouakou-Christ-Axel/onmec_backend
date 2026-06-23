@@ -1,5 +1,5 @@
 import { IsOptional, IsString, IsEnum, IsNumber } from 'class-validator';
-import { StatutSignalement } from '@prisma/client';
+import { StatutSignalement } from '../../../../generated/prisma/client';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 

@@ -17,7 +17,7 @@ import {SignalementCitoyenService} from './signalement-citoyen.service';
 import {CreateSignalementCitoyenDto} from './dto/signalement-citoyen-dto/create-signalement-citoyen.dto';
 import {UpdateSignalementCitoyenDto} from './dto/signalement-citoyen-dto/update-signalement-citoyen.dto';
 import {Request} from 'express';
-import {User} from '@prisma/client';
+import {User} from '../../generated/prisma/client';
 import {SearchSignalementCitoyenDto} from './dto/signalement-citoyen-dto/search-signalement-citoyen.dto';
 import {ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiParam, ApiResponse, ApiTags,} from '@nestjs/swagger';
 import {SignalementCitoyenDto} from './dto/signalement-citoyen-dto/signalement-citoyen.dto';

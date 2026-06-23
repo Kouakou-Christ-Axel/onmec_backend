@@ -1,7 +1,7 @@
 import { PartialType, ApiPropertyOptional } from '@nestjs/swagger';
 import { CreateSignalementCitoyenDto } from './create-signalement-citoyen.dto';
 import { IsBoolean, IsEnum, IsOptional } from 'class-validator';
-import { StatutSignalement } from '@prisma/client';
+import { StatutSignalement } from '../../../../generated/prisma/client';
 
 export class UpdateSignalementCitoyenDto extends PartialType(CreateSignalementCitoyenDto) {
   @ApiPropertyOptional({

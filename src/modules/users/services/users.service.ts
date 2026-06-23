@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 
 import { CreateUserDto } from '../dto/create-user.dto';
-import { Prisma, User, UserRole } from '@prisma/client';
+import { Prisma, User, UserRole } from '../../../generated/prisma/client';
 import { SearchUserDto } from '../dto/search-user.dto';
 import { Request } from 'express';
 import { PrismaService } from 'src/database/services/prisma.service';

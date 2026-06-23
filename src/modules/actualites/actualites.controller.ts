@@ -14,7 +14,7 @@ import {
   UseInterceptors
 } from '@nestjs/common';
 import {Request} from 'express';
-import {User} from '@prisma/client';
+import {User} from '../../generated/prisma/client';
 import {ActualitesService} from './actualites.service';
 import {CreateActualiteDto} from './dto/create-actualite.dto';
 import {UpdateActualiteDto} from './dto/update-actualite.dto';

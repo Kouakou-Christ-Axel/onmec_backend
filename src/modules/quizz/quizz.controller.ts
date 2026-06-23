@@ -25,7 +25,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { User, UserRole } from '@prisma/client';
+import { User, UserRole } from '../../generated/prisma/client';
 import { Request } from 'express';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';

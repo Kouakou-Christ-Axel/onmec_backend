@@ -8,7 +8,7 @@ import {
 import { PrismaService } from 'src/database/services/prisma.service';
 import * as bcrypt from 'bcryptjs';
 import { Request } from 'express';
-import { User, UserRole } from '@prisma/client';
+import { User, UserRole } from '../../../generated/prisma/client';
 import { LoginUserDto } from 'src/modules/auth/dto/login-user.dto';
 import { JsonWebTokenService } from 'src/json-web-token/json-web-token.service';
 import { permissionsByRole, RolePermissions } from 'src/common/constantes/permissionsByRole';

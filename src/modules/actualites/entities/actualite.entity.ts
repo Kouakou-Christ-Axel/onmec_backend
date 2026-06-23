@@ -1,4 +1,4 @@
-import {Actualite} from "@prisma/client";
+import {Actualite} from "../../../generated/prisma/client";
 
 export class ActualiteEntity implements Actualite {
 	id: string;

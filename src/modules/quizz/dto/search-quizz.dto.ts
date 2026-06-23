@@ -1,7 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, IsEnum, IsInt, Min } from 'class-validator';
 import { Type } from 'class-transformer';
-import { QuizDifficulte } from '@prisma/client';
+import { QuizDifficulte } from '../../../generated/prisma/client';
 
 export class SearchQuizzDto {
   @ApiPropertyOptional({ description: 'Filtrer par catégorie', example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' })
