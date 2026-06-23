@@ -161,6 +161,40 @@ export class SignalementCitoyenController {
 		);
 	}
 
+	@Get('mobile')
+	@ApiOperation({
+		summary: 'Flux mobile : signalements validés uniquement',
+		description:
+			"Retourne une liste paginée des signalements VALIDÉS (validation = true), destinée à l'application mobile. Supporte les mêmes filtres que GET / (recherche, catégorie, statut, rayon géographique) et la pagination pour le défilement infini.",
+	})
+	@ApiResponse({
+		status: HttpStatus.OK,
+		description: 'Liste des signalements validés récupérée avec succès',
+		schema: {
+			type: 'object',
+			properties: {
+				data: {
+					type: 'array',
+					items: {$ref: '#/components/schemas/SignalementCitoyenDto'},
+				},
+				meta: {
+					type: 'object',
+					properties: {
+						total: {type: 'number', example: 42},
+						page: {type: 'number', example: 1},
+						limit: {type: 'number', example: 10},
+						totalPages: {type: 'number', example: 5},
+					},
+				},
+			},
+		},
+	})
+	@UseGuards(OptionalJwtAuthGuard)
+	findAllMobile(@Query() searchDto: SearchSignalementCitoyenDto, @Req() req: Request) {
+		const user = req.user as User | undefined;
+		return this.signalementCitoyenService.findAll(searchDto, user?.id, true);
+	}
+
 	@Get(':id')
 	@ApiOperation({
 		summary: 'Récupérer un signalement par son ID',

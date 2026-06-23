@@ -132,12 +132,19 @@ export class SignalementCitoyenService {
 	}
 
 	/**
-	 * Récupère tous les signalements avec pagination et filtres
+	 * Récupère tous les signalements avec pagination et filtres.
+	 *
+	 * @param searchDto - Critères de recherche/filtre et pagination
+	 * @param userId - Visiteur connecté (pour likedByMe)
+	 * @param onlyValidated - Si vrai, ne renvoie que les signalements validés
+	 *   (validation = true). Utilisé par le flux mobile, qui ne doit afficher que
+	 *   les signalements validés par le back-office.
 	 */
-	async findAll(searchDto: SearchSignalementCitoyenDto, userId?: string): Promise<PaginatedResponse<any>> {
+	async findAll(searchDto: SearchSignalementCitoyenDto, userId?: string, onlyValidated = false): Promise<PaginatedResponse<any>> {
 		const {titre, search, categorieId, statut, latitude, longitude, radiusKm, citoyenId, page = 1, limit = 10} = searchDto;
 		const where: any = {};
 
+		if (onlyValidated) where.validation = true;
 		if (titre) where.titre = {contains: titre, mode: 'insensitive'};
 
 		// Recherche par mot-clé côté serveur : filtre insensible à la casse et en
