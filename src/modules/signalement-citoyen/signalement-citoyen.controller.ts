@@ -114,6 +114,53 @@ export class SignalementCitoyenController {
 		return this.signalementCitoyenService.findAll(searchDto, user?.id);
 	}
 
+	@Get('me')
+	@ApiOperation({
+		summary: "Récupérer les signalements de l'utilisateur connecté",
+		description:
+			"Retourne la liste paginée des signalements créés par l'utilisateur authentifié. L'identifiant du citoyen est déduit du JWT. Utilisé par l'écran profil pour n'afficher que les signalements de l'utilisateur.",
+	})
+	@ApiResponse({
+		status: HttpStatus.OK,
+		description: 'Liste des signalements du citoyen récupérée avec succès',
+		schema: {
+			type: 'object',
+			properties: {
+				data: {
+					type: 'array',
+					items: {$ref: '#/components/schemas/SignalementCitoyenDto'},
+				},
+				meta: {
+					type: 'object',
+					properties: {
+						total: {type: 'number', example: 4},
+						page: {type: 'number', example: 1},
+						limit: {type: 'number', example: 10},
+						totalPages: {type: 'number', example: 1},
+					},
+				},
+			},
+		},
+	})
+	@ApiResponse({
+		status: HttpStatus.UNAUTHORIZED,
+		description: 'Non authentifié',
+	})
+	@UseGuards(JwtAuthGuard)
+	findMine(
+		@Query('page') page: string,
+		@Query('limit') limit: string,
+		@Req() req: Request,
+	) {
+		const user = req.user as User;
+		return this.signalementCitoyenService.findByCitoyen(
+			user.id,
+			Number(page) > 0 ? Number(page) : 1,
+			Number(limit) > 0 ? Number(limit) : 10,
+			user.id,
+		);
+	}
+
 	@Get(':id')
 	@ApiOperation({
 		summary: 'Récupérer un signalement par son ID',
