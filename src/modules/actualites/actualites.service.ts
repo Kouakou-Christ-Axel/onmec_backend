@@ -32,6 +32,19 @@ const AUTHOR_SELECT = {
   select: { id: true, fullname: true, role: true },
 } as const;
 
+/**
+ * Relations jointes a toute lecture d'actualite.
+ *
+ * Regroupees ici parce qu'elles doivent etre identiques partout : une reponse
+ * de POST ou de PATCH qui n'exposerait pas la categorie et les tags, alors que
+ * les GET le font, obligerait le front a recharger apres chaque ecriture.
+ */
+const ACTUALITE_INCLUDE = {
+  author: AUTHOR_SELECT,
+  categorie: { select: { id: true, nom: true, slug: true } },
+  tags: { select: { id: true, nom: true, slug: true } },
+} as const;
+
 @Injectable()
 export class ActualitesService {
   private readonly logger = new Logger(ActualitesService.name);
@@ -134,24 +147,58 @@ export class ActualitesService {
     );
   }
 
+  /**
+   * Traduit une liste de noms de tags en instruction de rattachement Prisma.
+   *
+   * Les tags sont libres : le redacteur saisit des noms, pas des identifiants.
+   * `connectOrCreate` sur le slug reutilise le tag s'il existe deja, ce qui
+   * evite « Sante » et « sante » en double, et le cree sinon.
+   *
+   * Retourne `undefined` quand le champ est absent — distinct d'un tableau
+   * vide, qui signifie « retirer tous les tags ».
+   */
+  private tagsInput(tags?: string[]) {
+    if (tags === undefined) return undefined;
+
+    // Deduplication par slug : « Sante » et « sante  » saisis ensemble
+    // produiraient deux fois le meme connectOrCreate, que Prisma refuse.
+    const parSlug = new Map<string, string>();
+    for (const nom of tags) {
+      const propre = nom.trim();
+      const slug = slugify(propre);
+      if (slug && !parSlug.has(slug)) parSlug.set(slug, propre);
+    }
+
+    return {
+      connectOrCreate: [...parSlug].map(([slug, nom]) => ({
+        where: { slug },
+        create: { slug, nom },
+      })),
+    };
+  }
+
   async create(
     createActualiteDto: CreateActualiteDto,
     author: AuthenticatedActor,
     image?: Express.Multer.File,
   ) {
     const imageUrl = image ? `/uploads/actualites/${image.filename}` : null;
+    // `tags` est une liste de noms, pas une colonne : il ne peut pas etre
+    // repandu tel quel dans `data`.
+    const { tags, ...champs } = createActualiteDto;
 
     const write = async () => {
       const slug = await this.generateUniqueSlug(createActualiteDto.title);
       return this.prisma.actualite.create({
         data: {
-          ...createActualiteDto,
+          ...champs,
           slug,
           imageUrl,
           // Toujours dérivé du token : jamais accepté depuis le corps de requête.
           authorId: author.id,
+          tags: this.tagsInput(tags),
         },
-        include: { author: AUTHOR_SELECT },
+        include: ACTUALITE_INCLUDE,
       });
     };
 
@@ -208,11 +255,24 @@ export class ActualitesService {
       where.imageUrl = query.hasImage ? { not: null } : null;
     }
 
+    // Filtrage par slug et non par identifiant : les URL du front restent
+    // lisibles et survivent a une reconstruction de la base.
+    if (query?.categorie) {
+      where.categorie = { slug: query.categorie };
+    }
+
+    // Semantique OU : une actualite portant au moins un des tags demandes
+    // ressort. C'est la lecture attendue d'une liste de tags sur un site
+    // d'actualites -- un ET renverrait presque toujours vide.
+    if (query?.tags?.length) {
+      where.tags = { some: { slug: { in: query.tags } } };
+    }
+
     const [data, total] = await this.prisma.$transaction([
       this.prisma.actualite.findMany({
         where,
         orderBy: { date: 'desc' },
-        include: { author: AUTHOR_SELECT },
+        include: ACTUALITE_INCLUDE,
         skip,
         take: limit,
       }),
@@ -248,7 +308,7 @@ export class ActualitesService {
   async findOne(id: string, actor?: AuthenticatedActor) {
     const actualite = await this.prisma.actualite.findFirst({
       where: { id, ...this.visibilityFilter(actor) },
-      include: { author: AUTHOR_SELECT },
+      include: ACTUALITE_INCLUDE,
     });
 
     // 404 et non 403 : un brouillon ne doit pas révéler son existence.
@@ -262,7 +322,7 @@ export class ActualitesService {
   async findBySlug(slug: string, actor?: AuthenticatedActor) {
     const actualite = await this.prisma.actualite.findFirst({
       where: { slug, ...this.visibilityFilter(actor) },
-      include: { author: AUTHOR_SELECT },
+      include: ACTUALITE_INCLUDE,
     });
 
     if (!actualite) {
@@ -297,7 +357,18 @@ export class ActualitesService {
   ) {
     const actualite = await this.assertExists(id);
 
-    const updateData: Prisma.ActualiteUpdateInput = { ...updateActualiteDto };
+    const { tags, categorieId, ...champs } = updateActualiteDto;
+    const updateData: Prisma.ActualiteUpdateInput = { ...champs };
+
+    if (categorieId !== undefined) {
+      updateData.categorie = { connect: { id: categorieId } };
+    }
+
+    if (tags !== undefined) {
+      // Remplacement et non ajout : `set: []` detache d'abord l'existant, sans
+      // quoi un tag retire a la redaction resterait attache indefiniment.
+      updateData.tags = { set: [], ...this.tagsInput(tags) };
+    }
 
     if (image) {
       updateData.imageUrl = `/uploads/actualites/${image.filename}`;
@@ -313,7 +384,7 @@ export class ActualitesService {
     const updated = await this.prisma.actualite.update({
       where: { id },
       data: updateData,
-      include: { author: AUTHOR_SELECT },
+      include: ACTUALITE_INCLUDE,
     });
 
     // L'ancien fichier n'était jamais supprimé : chaque remplacement d'image
@@ -335,7 +406,7 @@ export class ActualitesService {
         statut: StatutActualite.PUBLIEE,
         publishedAt: actualite.publishedAt ?? new Date(),
       },
-      include: { author: AUTHOR_SELECT },
+      include: ACTUALITE_INCLUDE,
     });
 
     return this.withEngagement(this.mapToEntity(updated), updated.id);
@@ -348,7 +419,7 @@ export class ActualitesService {
     const updated = await this.prisma.actualite.update({
       where: { id },
       data: { statut: StatutActualite.BROUILLON },
-      include: { author: AUTHOR_SELECT },
+      include: ACTUALITE_INCLUDE,
     });
 
     return this.withEngagement(this.mapToEntity(updated), updated.id);
@@ -367,7 +438,7 @@ export class ActualitesService {
     const updated = await this.prisma.actualite.update({
       where: { id },
       data: { deletedAt: new Date(), statut: StatutActualite.ARCHIVEE },
-      include: { author: AUTHOR_SELECT },
+      include: ACTUALITE_INCLUDE,
     });
 
     return this.withEngagement(this.mapToEntity(updated), updated.id);
@@ -383,7 +454,7 @@ export class ActualitesService {
     const updated = await this.prisma.actualite.update({
       where: { id },
       data: { deletedAt: null, statut: StatutActualite.BROUILLON },
-      include: { author: AUTHOR_SELECT },
+      include: ACTUALITE_INCLUDE,
     });
 
     return this.withEngagement(this.mapToEntity(updated), updated.id);

@@ -67,6 +67,20 @@ const ID = {
     a2: '31000000-0000-0000-0000-000000000002',
     a3: '31000000-0000-0000-0000-000000000003',
   },
+  categoriesActualite: {
+    // Categorie de repli posee par la migration
+    // 20260824180000_actualites_categories_tags : meme identifiant, sans quoi
+    // le seed en creerait un doublon.
+    generales: '20000000-0000-0000-0000-000000000001',
+    vieCitoyenne: '20000000-0000-0000-0000-000000000002',
+    infrastructure: '20000000-0000-0000-0000-000000000003',
+  },
+  tagsActualite: {
+    plateforme: '30000000-0000-0000-0000-000000000001',
+    participation: '30000000-0000-0000-0000-000000000002',
+    abidjan: '30000000-0000-0000-0000-000000000003',
+    voirie: '30000000-0000-0000-0000-000000000004',
+  },
   documents: {
     d1: '32000000-0000-0000-0000-000000000001',
     d2: '32000000-0000-0000-0000-000000000002',
@@ -305,15 +319,47 @@ async function main() {
 
   console.log('✅ Signalements citoyens seeded');
 
+  // ── CATEGORIES ET TAGS D'ACTUALITE ────────────────────────────────────────────
+  const categoriesActualiteData = [
+    { id: ID.categoriesActualite.generales, nom: 'Actualités générales', slug: 'actualites-generales', description: 'Catégorie de repli des actualités antérieures au classement éditorial.' },
+    { id: ID.categoriesActualite.vieCitoyenne, nom: 'Vie citoyenne', slug: 'vie-citoyenne', description: 'Participation civique, droits et devoirs du citoyen.' },
+    { id: ID.categoriesActualite.infrastructure, nom: 'Infrastructure', slug: 'infrastructure', description: 'Routes, ponts, adduction d’eau et équipements publics.' },
+  ];
+
+  for (const c of categoriesActualiteData) {
+    await prisma.categorieActualite.upsert({ where: { id: c.id }, update: {}, create: c });
+  }
+
+  const tagsActualiteData = [
+    { id: ID.tagsActualite.plateforme, nom: 'Plateforme', slug: 'plateforme' },
+    { id: ID.tagsActualite.participation, nom: 'Participation', slug: 'participation' },
+    { id: ID.tagsActualite.abidjan, nom: 'Abidjan', slug: 'abidjan' },
+    { id: ID.tagsActualite.voirie, nom: 'Voirie', slug: 'voirie' },
+  ];
+
+  for (const t of tagsActualiteData) {
+    await prisma.tagActualite.upsert({ where: { id: t.id }, update: {}, create: t });
+  }
+
+  console.log("✅ Catégories et tags d’actualité seeded");
+
   // ── ACTUALITES ────────────────────────────────────────────────────────────────
   const actualitesData = [
-    { id: ID.actualites.a1, slug: 'lancement-plateforme-citoyenne-onmec', title: 'Lancement de la plateforme citoyenne Citoyen+', date: new Date('2025-01-15'), excerpt: 'La plateforme Citoyen+ ouvre ses portes pour connecter les citoyens ivoiriens à leurs institutions.', content: '<p>La plateforme numérique Citoyen+ a été officiellement lancée ce 15 janvier 2025.</p>', imageUrl: '/images/actualites/lancement-onmec.jpg' },
-    { id: ID.actualites.a2, slug: 'journee-nationale-citoyennete-2025', title: 'Journée nationale de la citoyenneté 2025', date: new Date('2025-03-10'), excerpt: "Le 10 mars, la Côte d'Ivoire célèbre la citoyenneté active et la participation civique.", content: "<p>À l'occasion de la Journée nationale de la citoyenneté, plusieurs activités sont organisées à travers le pays.</p>", imageUrl: '/images/actualites/journee-citoyennete.jpg' },
-    { id: ID.actualites.a3, slug: 'amelioration-voirie-abidjan-2025', title: "Programme d'amélioration de la voirie à Abidjan", date: new Date('2025-05-20'), excerpt: 'Le gouvernement annonce un vaste programme de réhabilitation des routes abidjanaises.', content: "<p>Dans le cadre du Plan National de Développement, le District d'Abidjan lance un programme pour la réhabilitation de plus de 200 km de voirie urbaine.</p>", imageUrl: '/images/actualites/voirie-abidjan.jpg' },
+    { id: ID.actualites.a1, slug: 'lancement-plateforme-citoyenne-onmec', title: 'Lancement de la plateforme citoyenne Citoyen+', date: new Date('2025-01-15'), excerpt: 'La plateforme Citoyen+ ouvre ses portes pour connecter les citoyens ivoiriens à leurs institutions.', content: '<p>La plateforme numérique Citoyen+ a été officiellement lancée ce 15 janvier 2025.</p>', imageUrl: '/images/actualites/lancement-onmec.jpg', categorieId: ID.categoriesActualite.vieCitoyenne, tagSlugs: ['plateforme', 'participation'] },
+    { id: ID.actualites.a2, slug: 'journee-nationale-citoyennete-2025', title: 'Journée nationale de la citoyenneté 2025', date: new Date('2025-03-10'), excerpt: "Le 10 mars, la Côte d'Ivoire célèbre la citoyenneté active et la participation civique.", content: "<p>À l'occasion de la Journée nationale de la citoyenneté, plusieurs activités sont organisées à travers le pays.</p>", imageUrl: '/images/actualites/journee-citoyennete.jpg', categorieId: ID.categoriesActualite.vieCitoyenne, tagSlugs: ['participation'] },
+    { id: ID.actualites.a3, slug: 'amelioration-voirie-abidjan-2025', title: "Programme d'amélioration de la voirie à Abidjan", date: new Date('2025-05-20'), excerpt: 'Le gouvernement annonce un vaste programme de réhabilitation des routes abidjanaises.', content: "<p>Dans le cadre du Plan National de Développement, le District d'Abidjan lance un programme pour la réhabilitation de plus de 200 km de voirie urbaine.</p>", imageUrl: '/images/actualites/voirie-abidjan.jpg', categorieId: ID.categoriesActualite.infrastructure, tagSlugs: ['abidjan', 'voirie'] },
   ];
 
   for (const a of actualitesData) {
-    await prisma.actualite.upsert({ where: { id: a.id }, update: {}, create: a });
+    const { tagSlugs, ...champs } = a;
+    await prisma.actualite.upsert({
+      where: { id: a.id },
+      update: {},
+      create: {
+        ...champs,
+        tags: { connect: tagSlugs.map((slug) => ({ slug })) },
+      },
+    });
   }
 
   console.log('✅ Actualités seeded');

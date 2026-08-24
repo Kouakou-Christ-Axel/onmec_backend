@@ -12,6 +12,18 @@ export class ActualiteAuthorDto {
   role: AdminRole;
 }
 
+/** Forme commune d'une categorie et d'un tag dans une reponse d'actualite. */
+export class ActualiteTaxonDto {
+  @ApiProperty({ example: '20000000-0000-0000-0000-000000000001' })
+  id: string;
+
+  @ApiProperty({ example: 'Infrastructure' })
+  nom: string;
+
+  @ApiProperty({ example: 'infrastructure' })
+  slug: string;
+}
+
 export class ActualiteResponseDto {
   @ApiProperty({ example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' })
   id: string;
@@ -52,6 +64,19 @@ export class ActualiteResponseDto {
     type: ActualiteAuthorDto,
   })
   author?: ActualiteAuthorDto | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Catégorie éditoriale. Null uniquement si la catégorie a été retirée après coup.',
+    type: ActualiteTaxonDto,
+  })
+  categorie?: ActualiteTaxonDto | null;
+
+  @ApiProperty({
+    description: 'Tags libres. Tableau vide si aucun.',
+    type: [ActualiteTaxonDto],
+  })
+  tags: ActualiteTaxonDto[];
 
   // Ces trois champs étaient déjà retournés par le service mais absents de la
   // documentation Swagger.

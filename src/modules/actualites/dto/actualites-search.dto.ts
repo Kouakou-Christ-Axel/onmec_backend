@@ -1,5 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsBoolean,
   IsDateString,
   IsEnum,
@@ -88,4 +90,32 @@ export class ActualitesSearchDto {
   @IsOptional()
   @IsEnum(StatutActualite)
   statut?: StatutActualite;
+
+  @ApiPropertyOptional({
+    description: 'Slug de la catégorie éditoriale',
+    example: 'infrastructure',
+  })
+  @IsOptional()
+  @IsString()
+  categorie?: string;
+
+  // Accepte `?tags=sante&tags=education` comme `?tags=sante,education`.
+  // Sans le @Transform, la seconde forme produirait un unique tag inexistant.
+  @ApiPropertyOptional({
+    description:
+      'Slugs de tags, séparés par des virgules ou répétés. Une actualité ressort si elle porte au moins un des tags.',
+    example: 'sante,education',
+    type: [String],
+  })
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === undefined || value === null || value === '') return undefined;
+    const brut = Array.isArray(value) ? value : String(value).split(',');
+    const propres = brut.map((t) => String(t).trim()).filter(Boolean);
+    return propres.length ? propres : undefined;
+  })
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMaxSize(10)
+  tags?: string[];
 }

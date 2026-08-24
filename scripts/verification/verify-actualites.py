@@ -81,9 +81,16 @@ member = login(MEMBER)
 check('tous les comptes de test authentifies',
       all([national, comm, mod, member]))
 
+# `categorieId` est obligatoire a la redaction depuis l'ajout du classement
+# editorial : on prend la premiere categorie exposee publiquement.
+st, cats = call('GET', '/categorie-actualite')
+check('categories exposees publiquement', st == 200 and len(cats) > 0, st)
+CATEGORIE = cats[0]['id'] if st == 200 and cats else None
+
 print('\n=== 1. Redaction reservee aux roles editoriaux ===')
 payload = {'title': 'Actu de verification phase C', 'excerpt': 'extrait',
-           'content': '<p>contenu</p>', 'date': '2026-08-24T10:00:00.000Z'}
+           'content': '<p>contenu</p>', 'date': '2026-08-24T10:00:00.000Z',
+           'categorieId': CATEGORIE}
 data, ctype = multipart(payload)
 
 st, _ = call('POST', '/actualites', raw_body=data, content_type=ctype, token=member)
@@ -196,8 +203,106 @@ data, ctype = multipart(payload, 'image', 'gros.png', b'\x00' * (6 * 1024 * 1024
 st, _ = call('POST', '/actualites', raw_body=data, content_type=ctype, token=comm)
 check('fichier > 5 Mo refuse', st >= 400, st)
 
+print('\n=== 10. Classement editorial : categorie et tags ===')
+st, _ = call('POST', '/actualites',
+             raw_body=multipart({k: v for k, v in payload.items()
+                                 if k != 'categorieId'})[0],
+             content_type=multipart(payload)[1], token=comm)
+check('categorieId obligatoire a la creation', st == 400, st)
+
+taggee = dict(payload)
+taggee['title'] = 'Actu taggee de verification'
+taggee['tags'] = 'Verification Alpha, verification-alpha ,  Verification Beta'
+data, ctype = multipart(taggee)
+st, avec_tags = call('POST', '/actualites', raw_body=data,
+                     content_type=ctype, token=comm)
+check('creation avec tags -> 201', st == 201, st)
+TAGGEE = avec_tags['id'] if st == 201 else None
+
+check('categorie retournee dans la reponse d ecriture',
+      (avec_tags.get('categorie') or {}).get('slug') is not None,
+      avec_tags.get('categorie'))
+slugs = sorted(t['slug'] for t in avec_tags.get('tags', []))
+# « Verification Alpha » et « verification-alpha » produisent le meme slug :
+# le second doit etre absorbe, pas duplique.
+check('tags dedupliques par slug', slugs == ['verification-alpha', 'verification-beta'],
+      slugs)
+
+call('PATCH', f'/actualites/{TAGGEE}/publier', token=comm)
+
+st, liste = call('GET', '/tag-actualite')
+noms = {t['slug'] for t in liste} if st == 200 else set()
+check('tags listes publiquement', st == 200 and 'verification-alpha' in noms, st)
+
+st, filtre = call('GET', '/actualites?tags=verification-alpha')
+ids = [a['id'] for a in filtre.get('data', [])] if st == 200 else []
+check('filtre par tag retourne l actualite taggee', TAGGEE in ids, ids)
+
+st, filtre = call('GET', '/actualites?tags=tag-qui-n-existe-pas')
+check('filtre sur un tag inconnu retourne un ensemble vide',
+      st == 200 and filtre['meta']['total'] == 0, st)
+
+slug_cat = cats[0]['slug']
+st, filtre = call('GET', f'/actualites?categorie={slug_cat}')
+check('filtre par categorie retourne l actualite classee',
+      st == 200 and TAGGEE in [a['id'] for a in filtre.get('data', [])], st)
+
+st, filtre = call('GET', '/actualites?categorie=categorie-inconnue')
+check('filtre sur une categorie inconnue retourne un ensemble vide',
+      st == 200 and filtre['meta']['total'] == 0, st)
+
+# Retrait des tags par un PATCH : le tableau vide doit detacher, pas ignorer.
+data, ctype = multipart({'tags': ''})
+st, sans_tags = call('PATCH', f'/actualites/{TAGGEE}', raw_body=data,
+                     content_type=ctype, token=comm)
+check('PATCH sans tags conserve les tags existants',
+      st == 200 and len(sans_tags.get('tags', [])) == 2, sans_tags.get('tags'))
+
+data, ctype = multipart({'tags': 'Verification Gamma'})
+st, remplaces = call('PATCH', f'/actualites/{TAGGEE}', raw_body=data,
+                     content_type=ctype, token=comm)
+check('PATCH avec tags remplace et ne cumule pas',
+      st == 200 and [t['slug'] for t in remplaces.get('tags', [])] == ['verification-gamma'],
+      remplaces.get('tags'))
+
+print('\n=== 11. Gestion des categories reservee au back-office ===')
+st, _ = call('POST', '/categorie-actualite', {'nom': 'Categorie interdite'},
+             token=member)
+check('membre ne peut pas creer de categorie', st == 403, st)
+st, _ = call('POST', '/categorie-actualite', {'nom': 'Categorie interdite'},
+             token=mod)
+check('moderateur ne peut pas creer de categorie', st == 403, st)
+st, cat = call('POST', '/categorie-actualite',
+               {'nom': 'Categorie de verification'}, token=comm)
+check('chargee de communication cree une categorie', st == 201, st)
+if st == 201:
+    check('slug derive du nom', cat['slug'] == 'categorie-de-verification', cat.get('slug'))
+    st, _ = call('POST', '/categorie-actualite',
+                 {'nom': 'Categorie de verification'}, token=comm)
+    check('slug en doublon sur une categorie vivante refuse', st == 409, st)
+    st, _ = call('DELETE', f"/categorie-actualite/{cat['id']}", token=comm)
+    check('suppression de categorie reservee a l administrateur national',
+          st == 403, st)
+    st, _ = call('DELETE', f"/categorie-actualite/{cat['id']}", token=national)
+    check('administrateur national retire la categorie', st == 204, st)
+
+    st, liste = call('GET', '/categorie-actualite')
+    check('categorie retiree absente de la liste publique',
+          cat['id'] not in [c['id'] for c in liste], st)
+
+    # Le slug reste occupe apres un soft-delete : recreer le meme nom doit
+    # ressusciter la categorie, pas echouer en 409 pour toujours.
+    st, revenue = call('POST', '/categorie-actualite',
+                       {'nom': 'Categorie de verification'}, token=comm)
+    check('recreer une categorie retiree la ressuscite',
+          st == 201 and revenue.get('id') == cat['id'],
+          f"{st} {revenue.get('id')} vs {cat['id']}")
+    call('DELETE', f"/categorie-actualite/{cat['id']}", token=national)
+
 # nettoyage
 call('DELETE', f'/actualites/{ACTU}', token=national)
+if TAGGEE:
+    call('DELETE', f'/actualites/{TAGGEE}', token=national)
 
 total = len(results)
 ok = sum(1 for r in results if r)

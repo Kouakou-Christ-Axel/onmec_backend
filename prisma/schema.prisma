@@ -312,12 +312,58 @@ model Actualite {
   authorId String? @db.Uuid
   author   Admin?  @relation("ActualiteAuthor", fields: [authorId], references: [id])
 
+  // Nullable en base, obligatoire dans CreateActualiteDto : supprimer une
+  // categorie ne doit pas emporter les actualites qu'elle classait, et la
+  // migration n'avait pas de valeur legitime a inventer pour l'existant (il est
+  // rattache a une categorie « Actualites generales » posee par la migration).
+  categorieId String?             @db.Uuid
+  categorie   CategorieActualite? @relation(fields: [categorieId], references: [id], onDelete: SetNull)
+
+  // Relation implicite : Prisma gere la table de jonction et la suppression des
+  // liens quand une actualite ou un tag disparait.
+  tags TagActualite[]
+
   reactions    Reaction[]
   commentaires Commentaire[]
 
   @@index([statut, date(sort: Desc)])
   @@index([deletedAt])
+  @@index([categorieId])
   @@map("actualites")
+}
+
+// Classement editorial ferme : les categories sont gerees au back-office, une
+// actualite en porte au plus une. Calque sur CategorieSignalement, y compris
+// son soft-delete.
+model CategorieActualite {
+  id          String  @id @default(uuid()) @db.Uuid
+  nom         String  @db.VarChar
+  slug        String  @unique
+  description String? @db.Text
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  actualites Actualite[]
+
+  @@index([deletedAt])
+  @@map("categories_actualite")
+}
+
+// Etiquetage libre : les tags sont crees a la volee a la redaction, une
+// actualite peut en porter plusieurs. Pas de soft-delete -- un tag n'a pas de
+// contenu propre, le detacher suffit.
+model TagActualite {
+  id   String @id @default(uuid()) @db.Uuid
+  nom  String @db.VarChar
+  slug String @unique
+
+  createdAt DateTime @default(now())
+
+  actualites Actualite[]
+
+  @@map("tags_actualite")
 }
 
 // Réaction (like) d'un membre sur un signalement OU une actualité.

@@ -11,6 +11,7 @@ export class ActualiteEntity implements Actualite {
 	statut: StatutActualite;
 	publishedAt: Date | null;
 	authorId: string | null;
+	categorieId: string | null;
 	createdAt: Date;
 	updatedAt: Date;
 	deletedAt: Date | null;

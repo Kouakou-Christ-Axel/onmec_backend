@@ -41,11 +41,14 @@ actions réelles, non-refarmabilité (unliker puis reliker ne recrédite pas),
 plafond quotidien des commentaires, obligation du `userId` sur l'ajustement
 back-office, et refus de l'auto-attribution par un membre.
 
-**`verify-actualites.py`** — 37 vérifications : restriction de la rédaction aux
+**`verify-actualites.py`** — 58 vérifications : restriction de la rédaction aux
 rôles éditoriaux, invisibilité des brouillons pour le public *et* pour le
 module engagement, prévisualisation back-office, publication et dépublication,
 recherche plein texte multi-mots, bornes de pagination, filtre `hasImage`,
-survie des likes à une suppression, et rejet des uploads non conformes.
+survie des likes à une suppression, rejet des uploads non conformes,
+classement éditorial (catégorie obligatoire à la rédaction, déduplication des
+tags par slug, filtres `?categorie=` et `?tags=`, remplacement et non cumul des
+tags au PATCH) et cloisonnement de la gestion des catégories.
 
 ## Limite connue
 
