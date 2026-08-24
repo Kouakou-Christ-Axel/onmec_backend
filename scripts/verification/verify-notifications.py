@@ -79,6 +79,12 @@ comm = login(COMM, admin=True)
 member = login(MEMBER)
 autre = login(AUTRE_MEMBER)
 check('comptes de test authentifies', all([national, comm, member, autre]))
+if not all([national, comm, member, autre]):
+    # Cause quasi systematique : rate limiting sur les routes de connexion
+    # apres une execution rapprochee (voir la limite connue du README).
+    print('\nArret : au moins un compte n a pas pu se connecter. '
+          'Attendre la fenetre de rate limiting avant de relancer.')
+    sys.exit(1)
 
 print('\n=== 1. Les endpoints d envoi ne sont plus ouverts ===')
 push = {'token': 'faux', 'title': 't', 'body': 'b', 'icon': ''}
@@ -136,7 +142,14 @@ data, ctype = multipart(payload)
 st, actu = call('POST', '/actualites', raw_body=data, content_type=ctype,
                 token=comm)
 check('actualite creee en brouillon', st == 201, st)
-ACTU = actu['id'] if st == 201 else None
+if st != 201:
+    # Le plus souvent : rate limiting sur /auth/admin/login apres une execution
+    # rapprochee. Sans cette sortie, la suite plantait sur une KeyError plutot
+    # que de nommer la cause.
+    print(actu)
+    print('\nArret : impossible de creer l actualite support des verifications.')
+    sys.exit(1)
+ACTU = actu['id']
 
 check('un brouillon ne notifie personne', non_lues(member) == avant,
       f'{avant} -> {non_lues(member)}')

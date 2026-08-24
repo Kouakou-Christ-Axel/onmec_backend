@@ -222,7 +222,10 @@ export class NotificationService {
     userId: string,
     id: string,
   ): Promise<NotificationResponseDto> {
-    const { count } = await this.prisma.notification.updateMany({
+    // Aucune ligne touchee signifie soit « deja lue », soit « pas la sienne » :
+    // la relecture qui suit tranche, et l'operation reste idempotente dans le
+    // premier cas.
+    await this.prisma.notification.updateMany({
       where: { id, userId, isRead: false },
       data: { isRead: true, readAt: new Date() },
     });
@@ -234,10 +237,6 @@ export class NotificationService {
     if (!notification) {
       throw new NotFoundException(`Notification avec l'id ${id} introuvable`);
     }
-
-    // count === 0 sur une notification existante signifie « deja lue » :
-    // l'operation est idempotente, pas en erreur.
-    void count;
 
     return this.mapNotification(notification);
   }
