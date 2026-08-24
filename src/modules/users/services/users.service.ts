@@ -1,97 +1,87 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 
 import { CreateUserDto } from '../dto/create-user.dto';
-import { Prisma, Member, UserRole } from '../../../generated/prisma/client';
+import { Prisma, StatutMembre } from '../../../generated/prisma/client';
+import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
 import { SearchUserDto } from '../dto/search-user.dto';
-import { Request } from 'express';
 import { PrismaService } from 'src/database/services/prisma.service';
-import * as bcrypt from 'bcryptjs';
+import { HashService } from 'src/common/services/hash.service';
 import { UpdateUserDto } from '../dto/update-user.dto';
 import { UpdateUserPasswordDto } from '../dto/update-user-password.dto';
+import { UpdateMemberStatutDto } from '../dto/update-member-statut.dto';
 import { GenerateDataService } from 'src/common/services/generate-data.service';
 import { ResetUserPasswordResponseDto } from '../dto/reset-user-password.dto';
+
+/**
+ * Champs exposables d'un membre.
+ *
+ * Selection EXPLICITE, et non `omit: { password: true }` : l'ancienne version
+ * laissait sortir `otpSecret` — le secret TOTP servant a verifier l'email et a
+ * reinitialiser le mot de passe — sur `GET /users`, `GET /users/:id/profile` et
+ * `GET /users/detail`. Deux methodes retournaient meme l'objet Prisma brut,
+ * hash de mot de passe inclus.
+ */
+const MEMBER_PUBLIC_SELECT = {
+  id: true,
+  fullname: true,
+  email: true,
+  phone: true,
+  avatar: true,
+  emailVerified: true,
+  statut: true,
+  suspendedAt: true,
+  suspensionRaison: true,
+  createdAt: true,
+  updatedAt: true,
+  deletedAt: true,
+} as const;
 
 @Injectable()
 export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly generateDataService: GenerateDataService,
+    private readonly hashService: HashService,
   ) {}
 
-  // CREATE
-  async create(req: Request, createUserDto: CreateUserDto) {
-    const { pass, hash } = await this.prepareNewUserCredentials(
-      req,
-      createUserDto,
-    );
-
-    // Créer l'utilisateur (le rôle fourni est respecté, MEMBER par défaut)
-    // L'image téléversée (chemin fourni par le contrôleur) est persistée dans `avatar`.
-    const { image, ...userData } = createUserDto;
-    const newUser = await this.prisma.member.create({
-      data: {
-        ...userData,
-        password: hash,
-        role: createUserDto.role ?? UserRole.MEMBER,
-        avatar: image,
-      },
+  /**
+   * Cree un compte membre depuis le back-office.
+   *
+   * Le mot de passe est genere par le serveur et retourne UNE SEULE FOIS a
+   * l'administrateur qui cree le compte, a charge pour lui de le transmettre.
+   */
+  async createMember(createUserDto: CreateUserDto) {
+    const exists = await this.prisma.member.findUnique({
+      where: { email: createUserDto.email },
+      select: { id: true },
     });
-
-    const { password, ...rest } = newUser;
-    return { ...rest, password: pass };
-  }
-
-  private async prepareNewUserCredentials(
-    req: Request,
-    createUserDto: CreateUserDto,
-  ) {
-    const user = req.user as Member;
-    // Vérification de l'existence de l'utilisateur
-    const userExist = await this.prisma.member.findUnique({
-      where: {
-        email: createUserDto.email,
-      },
-    });
-    if (userExist) {
-      throw new BadRequestException(
-        "Utilisateur déjà existant, changer d'email",
-      );
+    if (exists) {
+      throw new ConflictException('Un compte existe déjà avec cet email');
     }
 
-    // Générer le salt et le hash
-    const pass = this.generateDataService.generateSecurePassword();
-    const salt = await bcrypt.genSalt();
-    const hash = await bcrypt.hash(pass, salt);
-    return { pass, hash, user };
-  }
-
-  // CREATE MEMBER
-  async createMember(req: Request, createUserDto: CreateUserDto) {
-    const { pass, hash } = await this.prepareNewUserCredentials(
-      req,
-      createUserDto,
-    );
-
-    // Créer l'utilisateur
+    const plainPassword = this.generateDataService.generateSecurePassword();
     const { image, ...userData } = createUserDto;
-    const newUser = await this.prisma.member.create({
+
+    const member = await this.prisma.member.create({
       data: {
         ...userData,
-        password: hash,
-        role: UserRole.MEMBER,
+        password: await this.hashService.hash(plainPassword),
         avatar: image,
+        // Cree par un administrateur : l'adresse est reputee verifiee.
+        emailVerified: true,
       },
+      select: MEMBER_PUBLIC_SELECT,
     });
 
-    const { password, ...rest } = newUser;
-    return { ...rest, password: pass };
+    return { ...member, password: plainPassword };
   }
 
-  // FIND_ALL (paginé + filtres)
+  // FIND_ALL (pagine + filtres)
   async findAll(query: SearchUserDto = {}) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
@@ -107,8 +97,8 @@ export class UsersService {
       ];
     }
 
-    if (query.role) {
-      where.role = query.role;
+    if (query.statut) {
+      where.statut = query.statut;
     }
 
     if (query.status === 'ACTIVE') {
@@ -121,7 +111,7 @@ export class UsersService {
       this.prisma.member.findMany({
         where: Object.keys(where).length ? where : undefined,
         orderBy: { updatedAt: 'desc' },
-        omit: { password: true },
+        select: MEMBER_PUBLIC_SELECT,
         skip,
         take: limit,
       }),
@@ -132,20 +122,14 @@ export class UsersService {
 
     return {
       data,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit) || 1,
-      },
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) || 1 },
     };
   }
 
-  // FIND_ONE (par id)
   async findOneById(id: string) {
     const user = await this.prisma.member.findUnique({
       where: { id },
-      omit: { password: true },
+      select: MEMBER_PUBLIC_SELECT,
     });
 
     if (!user) {
@@ -155,197 +139,181 @@ export class UsersService {
     return user;
   }
 
-  // UPDATE (par id - Admin)
   async updateById(id: string, updateUserDto: UpdateUserDto) {
-    const exist = await this.prisma.member.findUnique({ where: { id } });
-    if (!exist) {
-      throw new NotFoundException('Utilisateur non trouvé');
-    }
+    await this.assertExists(id);
 
     const { image, ...userData } = updateUserDto;
-    return await this.prisma.member.update({
+    return this.prisma.member.update({
       where: { id },
-      data: { ...userData, avatar: image },
-      omit: { password: true },
+      data: { ...userData, ...(image ? { avatar: image } : {}) },
+      select: MEMBER_PUBLIC_SELECT,
     });
   }
 
-  // LOCK / UNLOCK (par id - Admin)
-  async setLockState(id: string, locked: boolean) {
-    const exist = await this.prisma.member.findUnique({ where: { id } });
-    if (!exist) {
-      throw new NotFoundException('Utilisateur non trouvé');
-    }
-
-    return await this.prisma.member.update({
-      where: { id },
-      data: { deletedAt: locked ? new Date() : null },
-      omit: { password: true },
-    });
-  }
-
-  // DELETE (par id - Admin)
-  async removeById(id: string) {
-    const exist = await this.prisma.member.findUnique({ where: { id } });
-    if (!exist) {
-      throw new NotFoundException('Utilisateur non trouvé');
-    }
-
-    await this.prisma.member.delete({ where: { id } });
-
-    return {
-      success: true,
-      message: 'Utilisateur supprimé avec succès',
-    };
-  }
-
-  // DETAIL
-  async detail(req: Request) {
-    const user = req.user as Member;
-    const profile = await this.prisma.member.findUnique({
-      where: {
-        id: user.id,
-      },
-    });
-
-    if (!profile) {
-      throw new NotFoundException('Utilisateur non trouvé');
-    }
-    const { password, ...rest } = profile;
-
-    return rest;
-  }
-
-  // UPDATE
-  async update(req: Request, updateUserDto: UpdateUserDto) {
-    const user = req.user as Member;
-
-    // L'image téléversée (chemin fourni par le contrôleur) est persistée dans `avatar`.
-    const { image, ...userData } = updateUserDto;
-    const newUser = await this.prisma.member.update({
-      where: {
-        id: user.id,
-      },
-      data: { ...userData, avatar: image },
-    });
-
-    const { password, ...rest } = newUser;
-
-    return rest;
-  }
-
-  // UPDATE PASSWORD
-  async updatePassword(
-    req: Request,
-    updateUserPasswordDto: UpdateUserPasswordDto,
+  /**
+   * Suspend, bannit ou reactive un compte membre.
+   *
+   * Ecrit dans `statut` et non dans `deletedAt` : la suspension est une
+   * decision de moderation, la suppression est un cycle de vie de compte.
+   * Le controle de statut vit dans la strategie JWT, donc une suspension
+   * coupe immediatement les tokens deja emis.
+   */
+  async setStatut(
+    id: string,
+    dto: UpdateMemberStatutDto,
+    moderator: AuthenticatedActor,
   ) {
-    const user = req.user as Member;
+    await this.assertExists(id);
 
-    const { oldPassword, password: pass, confirmPassword } = updateUserPasswordDto;
+    const suspendu = dto.statut !== StatutMembre.ACTIF;
 
-    if (pass !== confirmPassword) {
+    return this.prisma.member.update({
+      where: { id },
+      data: {
+        statut: dto.statut,
+        suspendedAt: suspendu ? new Date() : null,
+        suspensionRaison: suspendu ? (dto.raison ?? null) : null,
+        suspendedById: suspendu ? moderator.id : null,
+      },
+      select: MEMBER_PUBLIC_SELECT,
+    });
+  }
+
+  /** Suppression logique : le compte disparait des surfaces publiques. */
+  async softDeleteById(id: string) {
+    await this.assertExists(id);
+
+    return this.prisma.member.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+      select: MEMBER_PUBLIC_SELECT,
+    });
+  }
+
+  async restore(id: string) {
+    await this.assertExists(id);
+
+    return this.prisma.member.update({
+      where: { id },
+      data: { deletedAt: null },
+      select: MEMBER_PUBLIC_SELECT,
+    });
+  }
+
+  /**
+   * Suppression definitive.
+   *
+   * Trois relations sont en `ON DELETE RESTRICT` (quiz passes, notifications) :
+   * sans purge prealable, Prisma remonte une erreur de contrainte opaque. On
+   * supprime donc explicitement les dependances dans une transaction.
+   */
+  async removeById(id: string) {
+    await this.assertExists(id);
+
+    await this.prisma.$transaction(async (tx) => {
+      const userQuizzes = await tx.userQuiz.findMany({
+        where: { userId: id },
+        select: { id: true },
+      });
+      const userQuizIds = userQuizzes.map((uq) => uq.id);
+
+      if (userQuizIds.length) {
+        await tx.userAnswer.deleteMany({
+          where: { userQuizId: { in: userQuizIds } },
+        });
+        await tx.userQuiz.deleteMany({ where: { userId: id } });
+      }
+
+      await tx.notification.deleteMany({ where: { userId: id } });
+      await tx.member.delete({ where: { id } });
+    });
+
+    return { success: true, message: 'Utilisateur supprimé définitivement' };
+  }
+
+  /** Profil du membre connecte. */
+  async detail(actor: AuthenticatedActor) {
+    return this.findOneById(actor.id);
+  }
+
+  async update(actor: AuthenticatedActor, updateUserDto: UpdateUserDto) {
+    const { image, ...userData } = updateUserDto;
+
+    return this.prisma.member.update({
+      where: { id: actor.id },
+      data: { ...userData, ...(image ? { avatar: image } : {}) },
+      select: MEMBER_PUBLIC_SELECT,
+    });
+  }
+
+  async updatePassword(
+    actor: AuthenticatedActor,
+    dto: UpdateUserPasswordDto,
+  ) {
+    if (dto.password !== dto.confirmPassword) {
       throw new BadRequestException('Les mots de passe ne correspondent pas');
     }
 
-    // Récupérer le hash actuel (exclu de req.user) pour vérifier l'ancien mot de passe
-    const currentUser = await this.prisma.member.findUnique({
-      where: { id: user.id },
+    const current = await this.prisma.member.findUnique({
+      where: { id: actor.id },
       select: { password: true },
     });
 
-    if (!currentUser) {
+    if (!current) {
       throw new NotFoundException('Utilisateur non trouvé');
     }
 
-    const isOldPasswordValid = await bcrypt.compare(
-      oldPassword,
-      currentUser.password,
+    const valid = await this.hashService.compare(
+      dto.oldPassword,
+      current.password,
     );
-
-    if (!isOldPasswordValid) {
+    if (!valid) {
       throw new BadRequestException('Le mot de passe actuel est incorrect');
     }
 
-    const salt = await bcrypt.genSalt();
-    const hash = await bcrypt.hash(pass, salt);
-
-    const newUser = await this.prisma.member.update({
-      where: {
-        id: user.id,
-      },
-      data: {
-        password: hash,
-      },
+    return this.prisma.member.update({
+      where: { id: actor.id },
+      data: { password: await this.hashService.hash(dto.password) },
+      select: MEMBER_PUBLIC_SELECT,
     });
-
-    const { password, ...rest } = newUser;
-
-    return rest;
   }
 
-  async resetPassword(
-    req: Request,
-    user_id: string,
-  ): Promise<ResetUserPasswordResponseDto> {
-    // Générer le salt et le hash
-    const pass = this.generateDataService.generateSecurePassword();
-    const salt = await bcrypt.genSalt();
-    const hash = await bcrypt.hash(pass, salt);
+  /** Genere un mot de passe temporaire, retourne une seule fois a l'admin. */
+  async resetPassword(userId: string): Promise<ResetUserPasswordResponseDto> {
+    await this.assertExists(userId);
+
+    const plainPassword = this.generateDataService.generateSecurePassword();
 
     const user = await this.prisma.member.update({
-      where: {
-        id: user_id,
-      },
+      where: { id: userId },
       data: {
-        password: hash,
+        password: await this.hashService.hash(plainPassword),
+        otpSecret: null,
+        otpPurpose: null,
+        otpExpiresAt: null,
       },
+      select: { email: true },
     });
 
-    if (!user) {
+    return { email: user.email, password: plainPassword };
+  }
+
+  /** Suppression de son propre compte par le membre. */
+  async partialRemove(actor: AuthenticatedActor) {
+    return this.prisma.member.update({
+      where: { id: actor.id },
+      data: { deletedAt: new Date() },
+      select: MEMBER_PUBLIC_SELECT,
+    });
+  }
+
+  private async assertExists(id: string) {
+    const exists = await this.prisma.member.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!exists) {
       throw new NotFoundException('Utilisateur non trouvé');
     }
-
-    return {
-      email: user.email,
-      password: pass,
-    };
-  }
-
-  // PARTIAL DELETE
-  async partialRemove(req: Request) {
-    const user = req.user as Member;
-
-    return await this.prisma.member.update({
-      where: {
-        id: user.id,
-      },
-      data: {
-        deletedAt: new Date(),
-      },
-    });
-  }
-
-  // RESTAURATION
-  async restore(req: Request, id: string) {
-    return await this.prisma.member.update({
-      where: {
-        id: id,
-      },
-      data: {
-        deletedAt: null,
-      },
-    });
-  }
-
-  // DELETE
-  async remove(req: Request, id: string) {
-    const deletedUser = await this.prisma.member.delete({
-      where: {
-        id: id,
-      },
-    });
-
-    const { password, ...rest } = deletedUser;
-    return rest;
   }
 }

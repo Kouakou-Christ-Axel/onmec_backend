@@ -3,7 +3,11 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from 'src/database/services/prisma.service';
-import { UnauthorizedException } from '@nestjs/common';
+import {
+  AuthenticatedActor,
+  JwtPayload,
+} from 'src/common/types/authenticated-actor';
+import { resolveActor } from './actor-resolver';
 
 @Injectable()
 export class JwtRefreshStrategy extends PassportStrategy(
@@ -17,18 +21,11 @@ export class JwtRefreshStrategy extends PassportStrategy(
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('REFRESH_TOKEN_SECRET') ?? '',
+      secretOrKey: configService.getOrThrow<string>('REFRESH_TOKEN_SECRET'),
     });
   }
-  async validate(payload: any) {
-    const { sub } = payload;
-    const user = await this.prisma.member.findUnique({
-      where: { id: sub },
-    });
-    if (!user) {
-      throw new UnauthorizedException('Utilisateur non trouvé');
-    }
-    const { password, ...rest } = user;
-    return rest;
+
+  async validate(payload: JwtPayload): Promise<AuthenticatedActor> {
+    return resolveActor(this.prisma, payload);
   }
 }

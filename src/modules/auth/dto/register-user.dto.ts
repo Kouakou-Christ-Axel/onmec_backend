@@ -1,35 +1,16 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, MaxLength, IsOptional, Matches } from 'class-validator';
+import { IsNotEmpty, MaxLength, IsOptional } from 'class-validator';
 import { Transform } from 'class-transformer';
+import {
+  IsEmailField,
+  IsStrongPassword,
+} from 'src/common/decorators/validation.decorators';
 
 export class RegisterUserDto {
-  @ApiProperty({
-    description: "email de l'utilisateur",
-    example: 'jean@gmail.com',
-    required: true,
-    maxLength: 100,
-  })
-  @IsNotEmpty()
-  @MaxLength(100)
-  @Transform(({ value }) => value.trim())
+  @IsEmailField("Email de l'utilisateur")
   email: string;
 
-  @ApiProperty({
-    description: "mot de passe de l'utilisateur",
-    example: 'Password01@',
-    required: true,
-    maxLength: 15,
-  })
-  @IsNotEmpty()
-  @MaxLength(15)
-  @Transform(({ value }) => value?.trim())
-  @Matches(
-    /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{}|;':\".,<>?/\\])[A-Za-z\d!@#$%^&*()_+\-=\[\]{}|;':\".,<>?/\\]{8,}$/,
-    {
-      message:
-        'Le mot de passe doit contenir au moins 8 caractères, une majuscule, un chiffre et un caractère spécial.',
-    },
-  )
+  @IsStrongPassword("Mot de passe de l'utilisateur")
   password: string;
 
   @ApiProperty({
@@ -40,18 +21,17 @@ export class RegisterUserDto {
   })
   @IsNotEmpty()
   @MaxLength(100)
-  @Transform(({ value }) => value.trim())
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   fullname: string;
 
   @ApiProperty({
     description: "numéro de téléphone de l'utilisateur",
-    example: '+33123456789',
+    example: '+2250701020304',
     required: false,
     maxLength: 20,
   })
   @IsOptional()
   @MaxLength(20)
-  @Transform(({ value }) => value?.trim())
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   phone?: string;
 }
-  

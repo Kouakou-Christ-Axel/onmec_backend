@@ -1,19 +1,32 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from 'src/modules/auth/services/auth.service';
 import { LoginUserDto } from 'src/modules/auth/dto/login-user.dto';
 import {
   ApiBearerAuth,
+  ApiBadRequestResponse,
   ApiBody,
-  ApiConflictResponse,
   ApiCreatedResponse,
-  ApiNotFoundResponse,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { Request } from 'express';
 import { JwtRefreshAuthGuard } from '../guards/jwt-refresh-auth.guard';
+import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { CurrentUser } from '../decorators/current-user.decorator';
+import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
 import { RegisterUserDto } from '../dto/register-user.dto';
 import { VerifyEmailOtpDto } from '../dto/verify-email-otp.dto';
 import { ResendEmailOtpDto } from '../dto/resend-email-otp.dto';
@@ -26,17 +39,48 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('login')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @ApiOperation({
-    summary: 'Connexion utilisateur',
+    summary: 'Connexion membre',
     description:
-      'Authentifie un utilisateur et retourne un JWT et un refresh token. Requiert que l\'email soit vérifié.',
+      "Authentifie un membre et retourne un JWT et un refresh token. Requiert que l'email soit vérifié.",
   })
   @ApiBody({ type: LoginUserDto })
-  @ApiOkResponse({ description: 'Connexion réussie — retourne user, token et refreshToken' })
-  @ApiNotFoundResponse({ description: 'Utilisateur non trouvé' })
-  @ApiUnauthorizedResponse({ description: 'Mot de passe incorrect ou email non vérifié' })
+  @ApiOkResponse({
+    description: 'Connexion réussie — retourne le profil, les capacités et les tokens',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Identifiants invalides, email non vérifié, ou compte suspendu',
+  })
+  @ApiTooManyRequestsResponse({ description: 'Trop de tentatives de connexion' })
   async login(@Body() data: LoginUserDto) {
     return this.authService.login(data);
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT')
+  @ApiOperation({
+    summary: 'Profil de l’acteur connecté',
+    description: 'Fonctionne pour un membre comme pour un administrateur.',
+  })
+  @ApiOkResponse({ description: 'Profil courant' })
+  me(@CurrentUser() actor: AuthenticatedActor) {
+    return actor;
+  }
+
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(204)
+  @ApiBearerAuth('JWT')
+  @ApiOperation({
+    summary: 'Déconnexion',
+    description:
+      "Journalise la déconnexion. L'authentification étant sans état, le client doit supprimer ses tokens ; la révocation côté serveur nécessiterait une table de sessions.",
+  })
+  @ApiNoContentResponse({ description: 'Déconnexion enregistrée' })
+  logout() {
+    return;
   }
 
   @Get('refresh-token')
@@ -45,68 +89,80 @@ export class AuthController {
   @ApiOperation({
     summary: 'Rafraîchissement du token',
     description:
-      'Génère un nouveau JWT à partir du refresh token fourni dans le header Authorization.',
+      'Génère une nouvelle paire de tokens à partir du refresh token fourni dans le header Authorization.',
   })
-  @ApiOkResponse({ description: 'Nouveau JWT retourné' })
+  @ApiOkResponse({ description: 'Nouvelle paire de tokens' })
   @ApiUnauthorizedResponse({ description: 'Refresh token invalide ou expiré' })
   async refreshToken(@Req() req: Request) {
     return this.authService.refreshToken(req);
   }
 
+  @Post('refresh-token')
+  @UseGuards(JwtRefreshAuthGuard)
+  @ApiBearerAuth('JWT')
+  @ApiOperation({ summary: 'Rafraîchissement du token' })
+  @ApiOkResponse({ description: 'Nouvelle paire de tokens' })
+  async refreshTokenPost(@Req() req: Request) {
+    return this.authService.refreshToken(req);
+  }
+
   @Post('register')
+  @Throttle({ default: { limit: 3, ttl: 3_600_000 } })
   @ApiOperation({
-    summary: 'Création de compte',
+    summary: 'Création de compte membre',
     description:
-      'Crée un compte utilisateur non vérifié et envoie un code OTP à l\'adresse email fournie.',
+      "Crée un compte non vérifié et envoie un code OTP à l'adresse email fournie.",
   })
   @ApiBody({ type: RegisterUserDto })
   @ApiCreatedResponse({
-    description: 'Compte créé — un code OTP a été envoyé à l\'email',
+    description: "Compte créé — un code OTP a été envoyé à l'email",
     schema: {
-      properties: {
-        message: { type: 'string' },
-        email: { type: 'string' },
-      },
+      properties: { message: { type: 'string' }, email: { type: 'string' } },
     },
   })
-  @ApiConflictResponse({ description: 'Un compte avec cet email existe déjà' })
+  @ApiBadRequestResponse({ description: 'Email déjà utilisé ou données invalides' })
+  @ApiTooManyRequestsResponse({ description: 'Trop de créations de compte' })
   async register(@Body() data: RegisterUserDto) {
     return this.authService.register(data);
   }
 
   @Post('verify-email')
+  @Throttle({ default: { limit: 10, ttl: 900_000 } })
   @ApiOperation({
     summary: 'Vérification email par OTP',
     description:
-      'Vérifie le code OTP reçu par email. En cas de succès, retourne les tokens d\'authentification.',
+      "Vérifie le code OTP reçu par email. En cas de succès, retourne les tokens d'authentification.",
   })
   @ApiBody({ type: VerifyEmailOtpDto })
-  @ApiOkResponse({ description: 'Email vérifié — retourne user, token et refreshToken' })
-  @ApiNotFoundResponse({ description: 'Utilisateur non trouvé' })
+  @ApiOkResponse({ description: 'Email vérifié — retourne le profil et les tokens' })
+  @ApiBadRequestResponse({ description: 'Code OTP invalide ou expiré' })
   async verifyEmail(@Body() data: VerifyEmailOtpDto) {
     return this.authService.verifyEmail(data);
   }
 
   @Post('resend-email-otp')
+  @Throttle({ default: { limit: 3, ttl: 900_000 } })
   @ApiOperation({
     summary: 'Renvoi du code OTP',
-    description: 'Génère un nouveau code OTP et le renvoie à l\'adresse email indiquée.',
+    description:
+      "Génère un nouveau code OTP. Réponse générique : ne révèle pas l'existence du compte.",
   })
   @ApiBody({ type: ResendEmailOtpDto })
   @ApiOkResponse({
-    description: 'Nouveau code envoyé',
+    description: 'Demande prise en compte',
     schema: { properties: { message: { type: 'string' } } },
   })
-  @ApiNotFoundResponse({ description: 'Utilisateur non trouvé' })
+  @ApiTooManyRequestsResponse({ description: "Trop d'envois de code" })
   async resendEmailOtp(@Body() data: ResendEmailOtpDto) {
     return this.authService.resendEmailOtp(data);
   }
 
   @Post('forgot-password')
+  @Throttle({ default: { limit: 3, ttl: 900_000 } })
   @ApiOperation({
     summary: 'Mot de passe oublié',
     description:
-      'Envoie un code de réinitialisation à l\'adresse email fournie. Retourne toujours un message générique pour ne pas révéler l\'existence du compte.',
+      "Envoie un code de réinitialisation. Retourne toujours un message générique pour ne pas révéler l'existence du compte.",
   })
   @ApiBody({ type: ForgotPasswordDto })
   @ApiOkResponse({
@@ -118,6 +174,7 @@ export class AuthController {
   }
 
   @Post('reset-password')
+  @Throttle({ default: { limit: 5, ttl: 900_000 } })
   @ApiOperation({
     summary: 'Réinitialisation du mot de passe',
     description:
@@ -128,7 +185,7 @@ export class AuthController {
     description: 'Mot de passe réinitialisé',
     schema: { properties: { message: { type: 'string' } } },
   })
-  @ApiNotFoundResponse({ description: 'Utilisateur non trouvé' })
+  @ApiBadRequestResponse({ description: 'Code de réinitialisation invalide ou expiré' })
   async resetPassword(@Body() data: ResetPasswordDto) {
     return this.authService.resetPassword(data);
   }

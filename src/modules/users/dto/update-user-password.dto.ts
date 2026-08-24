@@ -1,47 +1,24 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, MaxLength, Matches } from 'class-validator';
+import { IsNotEmpty } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { IsStrongPassword } from 'src/common/decorators/validation.decorators';
 
 export class UpdateUserPasswordDto {
-  // OLD PASSWORD
-  @ApiProperty({
-    description: "le mot de passe actuel de l'utilisateur",
-    example: 'Password01@',
-    required: true,
-  })
+  @ApiProperty({ description: 'Mot de passe actuel', required: true })
   @IsNotEmpty()
-  @Transform(({ value }) => value?.trim())
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   oldPassword: string;
 
-  // PASSWORD
-  @ApiProperty({
-    description: "le mot de passe de l'utilisateur",
-    example: 'Password01@',
-    required: true,
-    maxLength: 15,
-  })
-  @IsNotEmpty()
-  @MaxLength(15)
-  @Transform(({ value }) => value?.trim())
-  @Matches(/^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{}|;':\".,<>?/\\])[A-Za-z\d!@#$%^&*()_+\-=\[\]{}|;':\".,<>?/\\]{8,}$/, {
-    message:
-      'Le mot de passe doit contenir au moins 8 caractères, une majuscule, un chiffre et un caractère spécial.',
-  })
+  @IsStrongPassword('Nouveau mot de passe')
   password: string;
 
-  // CONFIRM PASSWORD
+  // Obligatoire : le service compare les deux valeurs, un champ optionnel
+  // faisait échouer la comparaison au lieu de valider la saisie.
   @ApiProperty({
-    description: "la confirmation du mot de passe de l'utilisateur",
-    example: 'Password01@',
-    required: false,
-    maxLength: 15,
+    description: 'Confirmation du nouveau mot de passe',
+    required: true,
   })
-  @IsOptional()
-  @MaxLength(15)
-  @Transform(({ value }) => value?.trim())
-  @Matches(/^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{}|;':\".,<>?/\\])[A-Za-z\d!@#$%^&*()_+\-=\[\]{}|;':\".,<>?/\\]{8,}$/, {
-    message:
-      'La confirmation du mot de passe doit contenir au moins 8 caractères, une majuscule, un chiffre et un caractère spécial.',
-  })
+  @IsNotEmpty()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   confirmPassword: string;
 }

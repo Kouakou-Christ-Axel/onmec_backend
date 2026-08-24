@@ -17,7 +17,7 @@ import {SignalementCitoyenService} from './signalement-citoyen.service';
 import {CreateSignalementCitoyenDto} from './dto/signalement-citoyen-dto/create-signalement-citoyen.dto';
 import {UpdateSignalementCitoyenDto} from './dto/signalement-citoyen-dto/update-signalement-citoyen.dto';
 import {Request} from 'express';
-import {Member} from '../../generated/prisma/client';
+import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
 import {SearchSignalementCitoyenDto} from './dto/signalement-citoyen-dto/search-signalement-citoyen.dto';
 import {ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiParam, ApiResponse, ApiTags,} from '@nestjs/swagger';
 import {SignalementCitoyenDto} from './dto/signalement-citoyen-dto/signalement-citoyen.dto';
@@ -68,7 +68,7 @@ export class SignalementCitoyenController {
 		@UploadedFiles()
 		files: Express.Multer.File[],
 	) {
-		const user = req.user as Member;
+		const user = req.user as AuthenticatedActor;
 		createSignalementCitoyenDto.citoyenId = user.id;
 		return this.signalementCitoyenService.create(
 			createSignalementCitoyenDto,
@@ -110,7 +110,7 @@ export class SignalementCitoyenController {
 	})
 	@UseGuards(OptionalJwtAuthGuard)
 	findAll(@Query() searchDto: SearchSignalementCitoyenDto, @Req() req: Request) {
-		const user = req.user as Member | undefined;
+		const user = req.user as AuthenticatedActor | undefined;
 		return this.signalementCitoyenService.findAll(searchDto, user?.id);
 	}
 
@@ -152,7 +152,7 @@ export class SignalementCitoyenController {
 		@Query('limit') limit: string,
 		@Req() req: Request,
 	) {
-		const user = req.user as Member;
+		const user = req.user as AuthenticatedActor;
 		return this.signalementCitoyenService.findByCitoyen(
 			user.id,
 			Number(page) > 0 ? Number(page) : 1,
@@ -191,7 +191,7 @@ export class SignalementCitoyenController {
 	})
 	@UseGuards(OptionalJwtAuthGuard)
 	findAllMobile(@Query() searchDto: SearchSignalementCitoyenDto, @Req() req: Request) {
-		const user = req.user as Member | undefined;
+		const user = req.user as AuthenticatedActor | undefined;
 		return this.signalementCitoyenService.findAll(searchDto, user?.id, true);
 	}
 
@@ -220,7 +220,7 @@ export class SignalementCitoyenController {
 	})
 	@UseGuards(OptionalJwtAuthGuard)
 	findOne(@Param('id') id: string, @Req() req: Request) {
-		const user = req.user as Member | undefined;
+		const user = req.user as AuthenticatedActor | undefined;
 		return this.signalementCitoyenService.findOne(id, user?.id);
 	}
 

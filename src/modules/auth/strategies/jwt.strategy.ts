@@ -3,8 +3,21 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from 'src/database/services/prisma.service';
-import { UnauthorizedException } from '@nestjs/common';
+import {
+  AuthenticatedActor,
+  JwtPayload,
+} from 'src/common/types/authenticated-actor';
+import { resolveActor } from './actor-resolver';
 
+/**
+ * Strategie unique, dispatchante sur `payload.type`.
+ *
+ * Deux strategies distinctes (`jwt-admin` / `jwt-member`) obligeraient a
+ * dupliquer JwtAuthGuard, JwtRefreshAuthGuard et OptionalJwtAuthGuard — or ce
+ * dernier doit accepter l'un OU l'autre acteur sur les GET publics
+ * d'actualites, ce qui n'est pas exprimable proprement avec deux strategies
+ * branchees sur le meme header.
+ */
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   constructor(
@@ -14,20 +27,11 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('TOKEN_SECRET') ?? '',
+      secretOrKey: configService.getOrThrow<string>('TOKEN_SECRET'),
     });
   }
-  async validate(payload: any) {
-    const { sub } = payload;
 
-    const user = await this.prisma.member.findUnique({
-      where: { id: sub },
-    });
-    if (!user) {
-      throw new UnauthorizedException('Utilisateur non trouvé');
-    }
-    const { password, ...rest } = user;
-    return rest;
-
+  async validate(payload: JwtPayload): Promise<AuthenticatedActor> {
+    return resolveActor(this.prisma, payload);
   }
 }

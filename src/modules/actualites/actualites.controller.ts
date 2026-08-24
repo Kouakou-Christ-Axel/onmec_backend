@@ -14,7 +14,7 @@ import {
   UseInterceptors
 } from '@nestjs/common';
 import {Request} from 'express';
-import {Member} from '../../generated/prisma/client';
+import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
 import {ActualitesService} from './actualites.service';
 import {CreateActualiteDto} from './dto/create-actualite.dto';
 import {UpdateActualiteDto} from './dto/update-actualite.dto';
@@ -76,7 +76,7 @@ export class ActualitesController {
   })
   @UseGuards(OptionalJwtAuthGuard)
   findAll(@Query() query: ActualitesSearchDto, @Req() req: Request) {
-    const user = req.user as Member | undefined;
+    const user = req.user as AuthenticatedActor | undefined;
     return this.actualitesService.findAll(query, user?.id);
   }
 
@@ -87,7 +87,7 @@ export class ActualitesController {
   @ApiNotFoundResponse({ description: 'Actualité non trouvée' })
   @UseGuards(OptionalJwtAuthGuard)
   findBySlug(@Param('slug') slug: string, @Req() req: Request) {
-    const user = req.user as Member | undefined;
+    const user = req.user as AuthenticatedActor | undefined;
     return this.actualitesService.findBySlug(slug, user?.id);
   }
 
@@ -98,7 +98,7 @@ export class ActualitesController {
   @ApiNotFoundResponse({ description: 'Actualité non trouvée' })
   @UseGuards(OptionalJwtAuthGuard)
   findOne(@Param('id') id: string, @Req() req: Request) {
-    const user = req.user as Member | undefined;
+    const user = req.user as AuthenticatedActor | undefined;
     return this.actualitesService.findOne(id, user?.id);
   }
 

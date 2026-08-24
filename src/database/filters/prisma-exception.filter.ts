@@ -51,7 +51,7 @@ export class PrismaExceptionFilter implements ExceptionFilter {
             error: this.getErrorName(status),
             timestamp: new Date().toISOString(),
             code: exception.code || 'UNKNOWN',
-            details: this.getErrorDetails(exception),
+            ...(this.getErrorDetails(exception) ?? {}),
         });
     }
 
@@ -251,16 +251,31 @@ export class PrismaExceptionFilter implements ExceptionFilter {
         return 'Contrainte unique violée - Cette valeur existe déjà';
     }
 
-    private getErrorDetails(exception: any): any {
+    /**
+     * Details techniques de l'erreur Prisma.
+     *
+     * `meta` expose les noms de tables et de colonnes concernees, et
+     * `clientVersion` la version exacte du client : ces informations aident au
+     * debogage mais decrivent le schema de la base a un attaquant. Elles ne
+     * sont donc renvoyees qu'en dehors de la production.
+     */
+    private getErrorDetails(exception: any): { details: any } | null {
+        if (process.env.NODE_ENV === 'production') {
+            return null;
+        }
+
         if (exception instanceof Prisma.PrismaClientKnownRequestError) {
             return {
-                code: exception.code,
-                meta: exception.meta,
-                clientVersion: exception.clientVersion,
+                details: {
+                    code: exception.code,
+                    meta: exception.meta,
+                    clientVersion: exception.clientVersion,
+                },
             };
         }
+
         return {
-            clientVersion: exception.clientVersion || 'unknown',
+            details: { clientVersion: exception.clientVersion || 'unknown' },
         };
     }
 

@@ -10,14 +10,6 @@ datasource db {
   provider = "postgresql"
 }
 
-// Vestige de l'ancien modèle unifié `User`. Conservé le temps de la phase A
-// pour que le code existant compile ; supprimé en phase B avec la migration
-// `drop_member_role`.
-enum UserRole {
-  ADMIN
-  MEMBER
-}
-
 // Rôles du back-office. Un admin porte exactement un rôle.
 enum AdminRole {
   ADMIN_NATIONAL
@@ -87,9 +79,6 @@ model Member {
   email    String  @unique @db.VarChar
   phone    String? @db.VarChar
   password String  @db.VarChar
-
-  // Vestige phase A : supprimé en phase B (le type d'acteur remplace le rôle).
-  role UserRole @default(MEMBER)
 
   emailVerified Boolean @default(false)
 

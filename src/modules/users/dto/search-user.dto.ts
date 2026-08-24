@@ -1,28 +1,29 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { UserRole } from '../../../generated/prisma/client';
+import { StatutMembre } from '../../../generated/prisma/client';
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class SearchUserDto {
   @ApiPropertyOptional({
-    description: 'Recherche libre sur le nom, l\'email ou le téléphone',
+    description: "Recherche libre sur le nom, l'email ou le téléphone",
     example: 'jean',
   })
   @IsOptional()
   @IsString()
   search?: string;
 
+  // Remplace l'ancien filtre par rôle : les rôles n'existent plus côté membre.
   @ApiPropertyOptional({
-    description: 'Filtrer par rôle',
-    enum: UserRole,
-    example: UserRole.MEMBER,
+    description: 'Filtrer par statut de modération du compte',
+    enum: StatutMembre,
+    example: StatutMembre.ACTIF,
   })
   @IsOptional()
-  @IsEnum(UserRole)
-  role?: UserRole;
+  @IsEnum(StatutMembre)
+  statut?: StatutMembre;
 
   @ApiPropertyOptional({
-    description: 'Filtrer par état du compte',
+    description: 'Filtrer sur la suppression du compte',
     enum: ['ACTIVE', 'INACTIVE'],
     example: 'ACTIVE',
   })
@@ -37,10 +38,16 @@ export class SearchUserDto {
   @Min(1)
   page?: number = 1;
 
-  @ApiPropertyOptional({ description: 'Éléments par page', example: 10, default: 10 })
+  @ApiPropertyOptional({
+    description: 'Éléments par page',
+    example: 10,
+    default: 10,
+    maximum: 100,
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(100)
   limit?: number = 10;
 }

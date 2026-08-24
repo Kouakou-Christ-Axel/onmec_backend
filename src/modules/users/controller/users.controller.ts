@@ -1,250 +1,329 @@
-import { Body, Controller, Delete, Get, HttpStatus, Param, Patch, Post, Query, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
+  ApiConflictResponse,
   ApiConsumes,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiParam,
-  ApiResponse,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { UserRole } from '../../../generated/prisma/client';
-import { Request } from 'express';
-import { UserRoles } from 'src/common/decorators/user-roles.decorator';
-import { UserRolesGuard } from 'src/common/guards/user-roles.guard';
+import { AdminRole } from '../../../generated/prisma/client';
 import { GenerateConfigService } from 'src/common/services/generate-config.service';
 import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
+import { AdminGuard } from 'src/modules/auth/guards/admin.guard';
+import { AdminRolesGuard } from 'src/modules/auth/guards/admin-roles.guard';
+import { AdminRoles } from 'src/modules/auth/decorators/admin-roles.decorator';
+import { CurrentUser } from 'src/modules/auth/decorators/current-user.decorator';
+import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
 import { CreateUserDto } from 'src/modules/users/dto/create-user.dto';
 import { UpdateUserPasswordDto } from 'src/modules/users/dto/update-user-password.dto';
 import { UpdateUserDto } from 'src/modules/users/dto/update-user.dto';
+import { UpdateMemberStatutDto } from 'src/modules/users/dto/update-member-statut.dto';
 import { SearchUserDto } from 'src/modules/users/dto/search-user.dto';
 import { UsersService } from 'src/modules/users/services/users.service';
 import { ResetUserPasswordResponseDto } from '../dto/reset-user-password.dto';
 import { UserResponseDto } from '../dto/user-response.dto';
 
+const AVATAR_UPLOAD = GenerateConfigService.generateConfigSingleImageUpload(
+  './uploads/users-avatar',
+);
+
+const AVATAR_COMPRESSION = { quality: 70, width: 600, fit: 'inside' } as const;
+
+/**
+ * Comptes membres.
+ *
+ * Le chemin `users` est conservé volontairement : le front web est déjà livré
+ * et appelle ces routes. Les comptes back-office vivent sous `/admins`.
+ *
+ * Avant cette révision, 13 des 14 routes n'exigeaient qu'un JWT valide : tout
+ * membre connecté pouvait lire l'annuaire complet, modifier n'importe quel
+ * profil, verrouiller ou supprimer définitivement n'importe quel compte.
+ */
 @ApiTags('Utilisateurs')
 @ApiBearerAuth('JWT')
 @Controller('users')
+@UseGuards(JwtAuthGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) { }
+  constructor(private readonly usersService: UsersService) {}
 
-  // CREATE USER
+  private async resolveAvatar(image?: Express.Multer.File) {
+    if (!image?.path) return undefined;
+    const resized = await GenerateConfigService.compressImages(
+      { img_1: image.path },
+      undefined,
+      AVATAR_COMPRESSION,
+      true,
+    );
+    return resized?.['img_1'] ?? image.path;
+  }
+
+  // ── ADMINISTRATION DES MEMBRES ───────────────────────────────────────────
+
   @Post()
-  @UseGuards(JwtAuthGuard)
-  @UseInterceptors(FileInterceptor('image', { ...GenerateConfigService.generateConfigSingleImageUpload('./uploads/users-avatar') }))
-  @ApiOperation({ summary: 'Créer un utilisateur (Admin)', description: 'Crée un nouveau compte utilisateur avec avatar optionnel. Nécessite d\'être authentifié.' })
+  @UseGuards(AdminGuard, AdminRolesGuard)
+  @AdminRoles(AdminRole.ADMIN_NATIONAL)
+  @UseInterceptors(FileInterceptor('image', { ...AVATAR_UPLOAD }))
+  @ApiOperation({
+    summary: 'Créer un compte membre',
+    description:
+      "Réservé à l'administrateur national. Le mot de passe est généré par le serveur et retourné une seule fois. Cette route ne permet plus de créer un administrateur : les comptes back-office se créent via POST /admins.",
+  })
   @ApiConsumes('multipart/form-data')
   @ApiBody({ type: CreateUserDto })
-  @ApiCreatedResponse({ description: 'Utilisateur créé avec succès', type: UserResponseDto })
-  @ApiBadRequestResponse({ description: 'Email déjà utilisé' })
-  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
-  async create(@Req() req: Request, @Body() createUserDto: CreateUserDto, @UploadedFile() image: Express.Multer.File) {
-    const resizedPath = await GenerateConfigService.compressImages(
-      { "img_1": image?.path },
-      undefined,
-      {
-        quality: 70,
-        width: 600,
-        fit: 'inside',
-      },
-      true,
-    );
-    return this.usersService.create(req, { ...createUserDto, image: resizedPath!["img_1"] ?? image?.path });
+  @ApiCreatedResponse({ description: 'Membre créé', type: UserResponseDto })
+  @ApiConflictResponse({ description: 'Email déjà utilisé' })
+  @ApiForbiddenResponse({ description: "Réservé à l'administrateur national" })
+  async create(
+    @Body() createUserDto: CreateUserDto,
+    @UploadedFile() image: Express.Multer.File,
+  ) {
+    return this.usersService.createMember({
+      ...createUserDto,
+      image: await this.resolveAvatar(image),
+    });
   }
 
-  // CREATE MEMBER
   @Post('member')
-  @UseGuards(JwtAuthGuard)
-  @UseInterceptors(FileInterceptor('image', { ...GenerateConfigService.generateConfigSingleImageUpload('./uploads/users-avatar') }))
-  @ApiOperation({ summary: 'Créer un membre', description: 'Crée un nouveau compte membre avec avatar optionnel.' })
+  @UseGuards(AdminGuard, AdminRolesGuard)
+  @AdminRoles(AdminRole.ADMIN_NATIONAL)
+  @UseInterceptors(FileInterceptor('image', { ...AVATAR_UPLOAD }))
+  @ApiOperation({
+    summary: 'Créer un compte membre (alias de POST /users)',
+  })
   @ApiConsumes('multipart/form-data')
   @ApiBody({ type: CreateUserDto })
-  @ApiCreatedResponse({ description: 'Membre créé avec succès', type: UserResponseDto })
-  @ApiBadRequestResponse({ description: 'Email déjà utilisé' })
-  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
-  async createMember(@Req() req: Request, @Body() createUserDto: CreateUserDto, @UploadedFile() image: Express.Multer.File) {
-    const resizedPath = await GenerateConfigService.compressImages(
-      { "img_1": image?.path },
-      undefined,
-      {
-        quality: 70,
-        width: 600,
-        fit: 'inside',
-      },
-      true,
-    );
-    return this.usersService.createMember(req, { ...createUserDto, image: resizedPath!["img_1"] ?? image?.path });
+  @ApiCreatedResponse({ description: 'Membre créé', type: UserResponseDto })
+  @ApiConflictResponse({ description: 'Email déjà utilisé' })
+  async createMember(
+    @Body() createUserDto: CreateUserDto,
+    @UploadedFile() image: Express.Multer.File,
+  ) {
+    return this.usersService.createMember({
+      ...createUserDto,
+      image: await this.resolveAvatar(image),
+    });
   }
-  // GET DETAIL USER
+
+  // ── PROFIL DU COMPTE CONNECTÉ ────────────────────────────────────────────
+  // Déclaré avant `:id/profile` — sans effet de collision ici, mais l'ordre
+  // reste significatif pour le matching Nest.
+
   @Get('detail')
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Mon profil', description: 'Retourne le profil de l\'utilisateur authentifié.' })
+  @ApiOperation({
+    summary: 'Mon profil',
+    description: 'Profil du membre authentifié.',
+  })
   @ApiOkResponse({ description: 'Profil récupéré', type: UserResponseDto })
   @ApiUnauthorizedResponse({ description: 'Non authentifié' })
-  detail(@Req() req: Request) {
-    return this.usersService.detail(req);
+  detail(@CurrentUser() actor: AuthenticatedActor) {
+    this.assertMember(actor);
+    return this.usersService.detail(actor);
   }
 
-  // GET ALL USERS
   @Get()
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Liste des utilisateurs', description: 'Retourne les utilisateurs avec pagination et filtres optionnels (recherche, rôle, état).' })
-  @ApiOkResponse({
-    description: 'Liste paginée récupérée',
-    schema: {
-      allOf: [
-        { $ref: '#/components/schemas/PaginatedResponseDto' },
-        { properties: { data: { type: 'array', items: { $ref: '#/components/schemas/UserResponseDto' } } } },
-      ],
-    },
+  @UseGuards(AdminGuard, AdminRolesGuard)
+  @AdminRoles(AdminRole.ADMIN_NATIONAL, AdminRole.MODERATEUR)
+  @ApiOperation({
+    summary: 'Liste des membres',
+    description:
+      "Annuaire des comptes membres, avec pagination et filtres. Réservé à l'administrateur national et au modérateur.",
   })
-  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
+  @ApiOkResponse({ description: 'Liste paginée récupérée' })
+  @ApiForbiddenResponse({ description: 'Rôle insuffisant' })
   findAll(@Query() query: SearchUserDto) {
     return this.usersService.findAll(query);
   }
 
-  // GET ONE USER (par id - Admin)
   @Get(':id/profile')
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Détail d\'un utilisateur', description: 'Retourne le profil d\'un utilisateur par son identifiant.' })
-  @ApiParam({ name: 'id', description: 'Identifiant de l\'utilisateur', example: 'u1b2c3d4-e5f6-7890-abcd-ef1234567890' })
-  @ApiOkResponse({ description: 'Utilisateur récupéré', type: UserResponseDto })
+  @ApiOperation({
+    summary: "Détail d'un membre",
+    description: 'Accessible au membre lui-même, à l’administrateur national et au modérateur.',
+  })
+  @ApiParam({ name: 'id', description: 'Identifiant du membre' })
+  @ApiOkResponse({ description: 'Membre récupéré', type: UserResponseDto })
   @ApiNotFoundResponse({ description: 'Utilisateur non trouvé' })
-  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
-  findOneById(@Param('id') id: string) {
+  findOneById(@Param('id') id: string, @CurrentUser() actor: AuthenticatedActor) {
+    this.assertSelfOrRoles(actor, id, [
+      AdminRole.ADMIN_NATIONAL,
+      AdminRole.MODERATEUR,
+    ]);
     return this.usersService.findOneById(id);
   }
 
-  // UPDATE ONE USER (par id - Admin)
   @Patch(':id/profile')
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Mettre à jour un utilisateur (Admin)', description: 'Met à jour le profil d\'un utilisateur par son identifiant.' })
-  @ApiParam({ name: 'id', description: 'Identifiant de l\'utilisateur', example: 'u1b2c3d4-e5f6-7890-abcd-ef1234567890' })
+  @UseGuards(AdminGuard, AdminRolesGuard)
+  @AdminRoles(AdminRole.ADMIN_NATIONAL, AdminRole.MODERATEUR)
+  @ApiOperation({ summary: 'Mettre à jour le profil d’un membre' })
+  @ApiParam({ name: 'id', description: 'Identifiant du membre' })
   @ApiBody({ type: UpdateUserDto })
-  @ApiOkResponse({ description: 'Utilisateur mis à jour', type: UserResponseDto })
+  @ApiOkResponse({ description: 'Membre mis à jour', type: UserResponseDto })
   @ApiNotFoundResponse({ description: 'Utilisateur non trouvé' })
-  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
   updateById(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
     return this.usersService.updateById(id, updateUserDto);
   }
 
-  // LOCK / UNLOCK USER (par id - Admin)
-  @Patch(':id/lock')
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Verrouiller / déverrouiller un utilisateur (Admin)', description: 'Active ou désactive un compte utilisateur.' })
-  @ApiParam({ name: 'id', description: 'Identifiant de l\'utilisateur', example: 'u1b2c3d4-e5f6-7890-abcd-ef1234567890' })
-  @ApiBody({ schema: { properties: { locked: { type: 'boolean', example: true } } } })
-  @ApiOkResponse({ description: 'État du compte mis à jour', type: UserResponseDto })
+  @Patch(':id/statut')
+  @UseGuards(AdminGuard, AdminRolesGuard)
+  @AdminRoles(AdminRole.ADMIN_NATIONAL, AdminRole.MODERATEUR)
+  @ApiOperation({
+    summary: 'Suspendre, bannir ou réactiver un membre',
+    description:
+      'Remplace PATCH /users/:id/lock. La suspension est effective immédiatement, y compris sur les tokens déjà émis.',
+  })
+  @ApiParam({ name: 'id', description: 'Identifiant du membre' })
+  @ApiBody({ type: UpdateMemberStatutDto })
+  @ApiOkResponse({ description: 'Statut mis à jour', type: UserResponseDto })
   @ApiNotFoundResponse({ description: 'Utilisateur non trouvé' })
-  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
-  setLockState(@Param('id') id: string, @Body('locked') locked: boolean) {
-    return this.usersService.setLockState(id, locked);
+  setStatut(
+    @Param('id') id: string,
+    @Body() dto: UpdateMemberStatutDto,
+    @CurrentUser() actor: AuthenticatedActor,
+  ) {
+    return this.usersService.setStatut(id, dto, actor);
   }
 
-  // DELETE ONE USER (par id - Admin)
   @Delete(':id')
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Supprimer un utilisateur (Admin)', description: 'Suppression définitive d\'un utilisateur par son identifiant.' })
-  @ApiParam({ name: 'id', description: 'Identifiant de l\'utilisateur', example: 'u1b2c3d4-e5f6-7890-abcd-ef1234567890' })
-  @ApiOkResponse({ description: 'Utilisateur supprimé' })
+  @UseGuards(AdminGuard, AdminRolesGuard)
+  @AdminRoles(AdminRole.ADMIN_NATIONAL)
+  @ApiOperation({
+    summary: 'Supprimer un membre (réversible)',
+    description: 'Suppression logique. Restaurable via POST /users/restore/:id.',
+  })
+  @ApiParam({ name: 'id', description: 'Identifiant du membre' })
+  @ApiOkResponse({ description: 'Membre supprimé', type: UserResponseDto })
   @ApiNotFoundResponse({ description: 'Utilisateur non trouvé' })
-  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
   removeById(@Param('id') id: string) {
+    return this.usersService.softDeleteById(id);
+  }
+
+  @Patch(':id/reset-password')
+  @UseGuards(AdminGuard, AdminRolesGuard)
+  @AdminRoles(AdminRole.ADMIN_NATIONAL)
+  @ApiOperation({
+    summary: 'Réinitialiser le mot de passe d’un membre',
+    description: 'Génère un mot de passe temporaire, retourné une seule fois.',
+  })
+  @ApiParam({ name: 'id', description: 'Identifiant du membre' })
+  @ApiOkResponse({
+    description: 'Nouveau mot de passe généré',
+    type: ResetUserPasswordResponseDto,
+  })
+  @ApiNotFoundResponse({ description: 'Utilisateur non trouvé' })
+  async resetPassword(@Param('id') userId: string) {
+    return this.usersService.resetPassword(userId);
+  }
+
+  @Post('restore/:id')
+  @UseGuards(AdminGuard, AdminRolesGuard)
+  @AdminRoles(AdminRole.ADMIN_NATIONAL)
+  @ApiOperation({ summary: 'Restaurer un compte supprimé' })
+  @ApiParam({ name: 'id', description: 'Identifiant du membre' })
+  @ApiOkResponse({ description: 'Compte restauré', type: UserResponseDto })
+  @ApiNotFoundResponse({ description: 'Utilisateur non trouvé' })
+  async restore(@Param('id') id: string) {
+    return this.usersService.restore(id);
+  }
+
+  @Delete('/delete/:id')
+  @UseGuards(AdminGuard, AdminRolesGuard)
+  @AdminRoles(AdminRole.ADMIN_NATIONAL)
+  @ApiOperation({
+    summary: 'Supprimer définitivement un membre',
+    description:
+      'Irréversible. Purge au préalable les quiz passés et les notifications, qui sont en ON DELETE RESTRICT.',
+  })
+  @ApiParam({ name: 'id', description: 'Identifiant du membre' })
+  @ApiOkResponse({ description: 'Compte supprimé définitivement' })
+  @ApiNotFoundResponse({ description: 'Utilisateur non trouvé' })
+  async delete(@Param('id') id: string) {
     return this.usersService.removeById(id);
   }
 
-  // UPDATE USER
+  // ── SELF-SERVICE MEMBRE ──────────────────────────────────────────────────
+
   @Patch()
-  @UseGuards(JwtAuthGuard)
-  @UseInterceptors(FileInterceptor('image', { ...GenerateConfigService.generateConfigSingleImageUpload('./uploads/users-avatar') }))
+  @UseInterceptors(FileInterceptor('image', { ...AVATAR_UPLOAD }))
   @ApiOperation({ summary: 'Mettre à jour mon profil' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({ type: UpdateUserDto })
   @ApiOkResponse({ description: 'Profil mis à jour', type: UserResponseDto })
   @ApiBadRequestResponse({ description: 'Données invalides' })
-  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
-  async update(@Req() req: Request, @Body() updateUserDto: UpdateUserDto, @UploadedFile() image: Express.Multer.File) {
-    const resizedPath = await GenerateConfigService.compressImages(
-      { "img_1": image?.path },
-      undefined,
-      {
-        quality: 70,
-        width: 600,
-        fit: 'inside',
-      },
-      true,
-    );
-    return this.usersService.update(req, { ...updateUserDto, image: resizedPath!["img_1"] ?? image?.path });
+  async update(
+    @CurrentUser() actor: AuthenticatedActor,
+    @Body() updateUserDto: UpdateUserDto,
+    @UploadedFile() image: Express.Multer.File,
+  ) {
+    this.assertMember(actor);
+    return this.usersService.update(actor, {
+      ...updateUserDto,
+      image: await this.resolveAvatar(image),
+    });
   }
 
-  // UPDATE PASSWORD
   @Patch('password')
-  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Changer mon mot de passe' })
   @ApiBody({ type: UpdateUserPasswordDto })
   @ApiOkResponse({ description: 'Mot de passe mis à jour' })
   @ApiBadRequestResponse({ description: 'Mot de passe actuel incorrect' })
-  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
   async updatePassword(
-    @Req() req: Request,
-    @Body() updateUserPasswordDto: UpdateUserPasswordDto,
+    @CurrentUser() actor: AuthenticatedActor,
+    @Body() dto: UpdateUserPasswordDto,
   ) {
-    return this.usersService.updatePassword(req, updateUserPasswordDto);
-  }
-  // RESET PASSWORD (Admin)
-  @Patch(':id/reset-password')
-  @UseGuards(JwtAuthGuard, UserRolesGuard)
-  @UserRoles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Réinitialiser le mot de passe (Admin)', description: 'Génère un nouveau mot de passe temporaire pour l\'utilisateur spécifié.' })
-  @ApiParam({ name: 'id', description: 'Identifiant de l\'utilisateur', example: 'u1b2c3d4-e5f6-7890-abcd-ef1234567890' })
-  @ApiOkResponse({ description: 'Nouveau mot de passe généré', type: ResetUserPasswordResponseDto })
-  @ApiNotFoundResponse({ description: 'Utilisateur non trouvé' })
-  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
-  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Réservé aux administrateurs' })
-  async resetPassword(
-    @Req() req: Request,
-    @Param('id') user_id: string,
-  ) {
-    return this.usersService.resetPassword(req, user_id);
+    this.assertMember(actor);
+    return this.usersService.updatePassword(actor, dto);
   }
 
-  // PARTIAL DELETE
   @Delete()
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Désactiver mon compte', description: 'Soft delete du compte de l\'utilisateur authentifié.' })
-  @ApiOkResponse({ description: 'Compte désactivé' })
-  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
-  async partialDelete(@Req() req: Request) {
-    return this.usersService.partialRemove(req);
+  @ApiOperation({
+    summary: 'Supprimer mon compte',
+    description: 'Suppression logique du compte du membre authentifié.',
+  })
+  @ApiOkResponse({ description: 'Compte supprimé', type: UserResponseDto })
+  async partialDelete(@CurrentUser() actor: AuthenticatedActor) {
+    this.assertMember(actor);
+    return this.usersService.partialRemove(actor);
   }
 
-  // RESTAURATION
-  @Post('restore/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Restaurer un compte', description: 'Réactive un compte préalablement désactivé.' })
-  @ApiParam({ name: 'id', description: 'Identifiant de l\'utilisateur', example: 'u1b2c3d4-e5f6-7890-abcd-ef1234567890' })
-  @ApiOkResponse({ description: 'Compte restauré', type: UserResponseDto })
-  @ApiNotFoundResponse({ description: 'Utilisateur non trouvé' })
-  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
-  async restore(@Req() req: Request, @Param('id') id: string) {
-    return this.usersService.restore(req, id);
+  // ── HELPERS ──────────────────────────────────────────────────────────────
+
+  /** Les routes self-service n'ont pas de sens pour un compte back-office. */
+  private assertMember(actor: AuthenticatedActor) {
+    if (actor.type !== 'member') {
+      throw new ForbiddenException(
+        'Cette route concerne les comptes membres. Utilisez /auth/admin/me pour un compte back-office.',
+      );
+    }
   }
 
-  // DELETE
-  @Delete('/delete/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Supprimer définitivement (Admin)', description: 'Suppression permanente et irréversible du compte.' })
-  @ApiParam({ name: 'id', description: 'Identifiant de l\'utilisateur', example: 'u1b2c3d4-e5f6-7890-abcd-ef1234567890' })
-  @ApiOkResponse({ description: 'Compte supprimé définitivement' })
-  @ApiNotFoundResponse({ description: 'Utilisateur non trouvé' })
-  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
-  async delete(@Req() req: Request, @Param('id') id: string) {
-    return this.usersService.remove(req, id);
+  private assertSelfOrRoles(
+    actor: AuthenticatedActor,
+    targetId: string,
+    roles: AdminRole[],
+  ) {
+    if (actor.type === 'member' && actor.id === targetId) return;
+    if (actor.type === 'admin' && roles.includes(actor.role as AdminRole)) return;
+    throw new ForbiddenException("Accès refusé à ce profil");
   }
 }

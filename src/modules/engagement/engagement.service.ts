@@ -4,7 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Member, UserRole } from '../../generated/prisma/client';
+import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
 import { PrismaService } from '../../database/services/prisma.service';
 import { CreateCommentaireDto } from './dto/create-commentaire.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
@@ -159,7 +159,7 @@ export class EngagementService {
     target: EngagementTarget,
     targetId: string,
     commentaireId: string,
-    user: Member,
+    user: AuthenticatedActor,
   ): Promise<void> {
     const commentaire = await this.prisma.commentaire.findUnique({
       where: { id: commentaireId },
@@ -179,7 +179,8 @@ export class EngagementService {
     }
 
     const isOwner = commentaire.userId === user.id;
-    const isAdmin = user.role === UserRole.ADMIN;
+    // Les trois roles back-office moderent les commentaires.
+    const isAdmin = user.type === 'admin';
     if (!isOwner && !isAdmin) {
       throw new ForbiddenException(
         'Vous ne pouvez supprimer que vos propres commentaires',

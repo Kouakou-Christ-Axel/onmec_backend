@@ -1,15 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsEmail, IsNotEmpty, Length } from 'class-validator';
+import { IsNotEmpty, Length } from 'class-validator';
+import { IsEmailField } from 'src/common/decorators/validation.decorators';
 
 export class VerifyEmailOtpDto {
-  @ApiProperty({
-    description: "Adresse email de l'utilisateur",
-    example: 'jean@citoyen.ci',
-  })
-  @IsEmail()
-  @IsNotEmpty()
-  @Transform(({ value }) => value?.trim().toLowerCase())
+  @IsEmailField("Adresse email de l'utilisateur")
   email: string;
 
   @ApiProperty({
@@ -20,6 +15,6 @@ export class VerifyEmailOtpDto {
   })
   @IsNotEmpty()
   @Length(6, 6)
-  @Transform(({ value }) => value?.trim())
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   otp: string;
 }
