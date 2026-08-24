@@ -30,7 +30,7 @@ export function IsEmailField(description = 'Adresse email') {
 
 // Au moins une majuscule, un chiffre et un caractere special.
 const PASSWORD_PATTERN =
-  /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{}|;':".,<>?/\\]).+$/;
+  /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{}|;':".,<>?/\\]).+$/;
 
 /**
  * Politique de mot de passe.

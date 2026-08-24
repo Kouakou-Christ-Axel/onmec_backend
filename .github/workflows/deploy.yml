@@ -40,6 +40,39 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit
 
+      # Le dépôt embarquait les dépendances ESLint 9 sans fichier de
+      # configuration : `pnpm lint` échouait donc systématiquement et rien
+      # n'était linté. Variante sans `--fix` : une CI ne doit pas réécrire le
+      # code qu'elle vérifie.
+      - name: Lint
+        run: pnpm lint:check
+
+      # Les tests ne touchaient pas la CI. Les trois régressions introduites
+      # pendant le chantier admin/membre n'ont été rattrapées que par des
+      # exécutions locales — sans cette étape, elles partaient en production.
+      # Toutes les dépendances des specs sont mockées : aucune base requise.
+      - name: Unit tests
+        run: pnpm test
+
+      # Vérifie que le schéma Prisma et les migrations ne divergent pas. Une
+      # dérive ne casse ni le type check ni les tests, mais fait échouer le
+      # `migrate deploy` du job suivant, une fois sur le VPS.
+      - name: Migration drift check
+        run: |
+          DIFF=$(pnpm exec prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema prisma/schema.prisma --script)
+          echo "$DIFF"
+          if ! echo "$DIFF" | grep -q "This is an empty migration"; then
+            echo "::error::Le schéma Prisma diverge des migrations."
+            exit 1
+          fi
+        env:
+          DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
+
+      - name: Build
+        run: pnpm build
+
   migrate:
     name: Migrate & Seed
     needs: ci

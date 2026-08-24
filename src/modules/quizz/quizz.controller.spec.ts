@@ -8,7 +8,8 @@ describe('QuizzController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [QuizzController],
-      providers: [QuizzService],
+      // Mocke : le service reel tire PrismaService et GamificationService.
+      providers: [{ provide: QuizzService, useValue: {} }],
     }).compile();
 
     controller = module.get<QuizzController>(QuizzController);

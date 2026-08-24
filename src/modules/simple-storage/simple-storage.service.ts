@@ -2,7 +2,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
-import { fileTypeFromFile } from 'file-type';
 import { createReadStream, unlinkSync } from 'fs';
 import { Readable } from 'node:stream';
 import { ConfigService } from '@nestjs/config';
@@ -28,6 +27,23 @@ export class SimpleStorageService implements ISimpleStorageService {
         ),
       },
     });
+  }
+
+  /**
+   * Detection du type reel d'un fichier, `file-type` charge a la demande.
+   *
+   * `file-type` v21 est un paquet ESM pur : sa carte d'exports ne declare
+   * aucune entree `require`, seulement `import` et `module-sync`. Node 22 sait
+   * resoudre la seconde, mais pas le resolveur de Jest -- un import statique
+   * faisait donc echouer toute la suite de ce module sur un « Cannot find
+   * module 'file-type' », alors que le code fonctionne a l'execution.
+   *
+   * L'import differe repousse la resolution au premier appel reel, que les
+   * tests unitaires n'atteignent pas.
+   */
+  private async detectFileType(chemin: string) {
+    const { fileTypeFromFile } = await import('file-type');
+    return fileTypeFromFile(chemin);
   }
 
   async uploadFiles(
@@ -58,7 +74,7 @@ export class SimpleStorageService implements ISimpleStorageService {
     const uploadResults: IS3UploadResult[] = [];
 
     try {
-      const detected = await fileTypeFromFile(file.original.path).catch(
+      const detected = await this.detectFileType(file.original.path).catch(
         () => null,
       );
       const contentType = detected ? detected.mime : 'application/octet-stream';

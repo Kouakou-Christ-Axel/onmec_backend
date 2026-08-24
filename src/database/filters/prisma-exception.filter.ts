@@ -205,12 +205,12 @@ export class PrismaExceptionFilter implements ExceptionFilter {
         }
     }
 
-    private handleMigrateErrors(exception: Prisma.PrismaClientKnownRequestError): { status: HttpStatus; message: string } {
+    private handleMigrateErrors(_exception: Prisma.PrismaClientKnownRequestError): { status: HttpStatus; message: string } {
         // Les erreurs de migration sont généralement des erreurs de développement/déploiement
         return { status: HttpStatus.INTERNAL_SERVER_ERROR, message: 'Erreur de migration de base de données' };
     }
 
-    private handleIntrospectionErrors(exception: Prisma.PrismaClientKnownRequestError): { status: HttpStatus; message: string } {
+    private handleIntrospectionErrors(_exception: Prisma.PrismaClientKnownRequestError): { status: HttpStatus; message: string } {
         // Les erreurs d'introspection sont généralement des erreurs de développement
         return { status: HttpStatus.INTERNAL_SERVER_ERROR, message: 'Erreur d\'introspection de base de données' };
     }

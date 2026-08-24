@@ -249,7 +249,10 @@ model UserQuiz {
   score       Int
   completedAt DateTime?
 
-  user    Member       @relation(fields: [userId], references: [id])
+  // Cascade : l'historique de quiz d'un membre lui appartient. Sans elle, la
+  // suppression definitive d'un compte ayant passe un seul quiz echouait en
+  // RESTRICT, donc en 500 sur DELETE /users/delete/:id.
+  user    Member       @relation(fields: [userId], references: [id], onDelete: Cascade)
   quiz    Quiz         @relation(fields: [quizId], references: [id])
   answers UserAnswer[]
 }
@@ -261,7 +264,9 @@ model UserAnswer {
   questionId String @db.Uuid
   choiceId   String @db.Uuid
 
-  userQuiz UserQuiz @relation(fields: [userQuizId], references: [id])
+  // Second maillon de la meme chaine : sans lui, la cascade sur UserQuiz
+  // butait a son tour sur les reponses.
+  userQuiz UserQuiz @relation(fields: [userQuizId], references: [id], onDelete: Cascade)
   question Question @relation(fields: [questionId], references: [id])
   choice   Choice   @relation(fields: [choiceId], references: [id])
 }
@@ -303,7 +308,9 @@ model DeviceToken {
   createdAt DateTime @default(now())
 
   userId String? @db.Uuid
-  user   Member? @relation(fields: [userId], references: [id])
+  // Cascade : supprimer un compte doit retirer ses appareils, sinon ils
+  // resteraient enregistres sans destinataire.
+  user   Member? @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Actualite {

@@ -8,10 +8,14 @@ describe('SignalementCitoyenController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [SignalementCitoyenController],
-      providers: [SignalementCitoyenService],
+      // Mocke : le service reel tire PrismaService, EngagementService,
+      // GamificationService et NotificationService.
+      providers: [{ provide: SignalementCitoyenService, useValue: {} }],
     }).compile();
 
-    controller = module.get<SignalementCitoyenController>(SignalementCitoyenController);
+    controller = module.get<SignalementCitoyenController>(
+      SignalementCitoyenController,
+    );
   });
 
   it('should be defined', () => {

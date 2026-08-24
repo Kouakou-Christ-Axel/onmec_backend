@@ -129,7 +129,9 @@ async function main() {
   // ── USERS ────────────────────────────────────────────────────────────────────
   // Upsert by email (unique). If user already exists with a random UUID (created
   // via the API), we keep their real ID and capture it for use in FK references below.
-  const admin = await prisma.member.upsert({
+  // Prefixe par _ : cree pour lui-meme (compte de demonstration), son
+  // identifiant n'est reference nulle part ailleurs dans le seed.
+  const _admin = await prisma.member.upsert({
     where: { email: 'admin@agence.ci' },
     update: { emailVerified: true },
     create: {

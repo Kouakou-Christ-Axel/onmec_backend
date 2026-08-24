@@ -12,7 +12,7 @@ import { DocumentFilesDto } from '../../librairie/dto/create-document.dto';
 export class UploadValidationPipe implements PipeTransform {
   transform(
     value: DocumentFilesDto = { fichiers: [], covers: [] },
-    metadata: ArgumentMetadata,
+    _metadata: ArgumentMetadata,
   ) {
     const { fichiers } = value;
 
