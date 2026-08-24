@@ -1,4 +1,4 @@
-import { StatutSignalement, User } from '../../../../generated/prisma/client';
+import { StatutSignalement, Member } from '../../../../generated/prisma/client';
 import { CategorieSignalementDto } from '../categorie-signalement-dto/categorie-signalement.dto';
 import {ApiProperty} from "@nestjs/swagger";
 import {Expose, Type} from "class-transformer";
@@ -133,7 +133,7 @@ export class SignalementCitoyenDto {
     required: false,
   })
   @Expose()
-  citoyen?: User;
+  citoyen?: Member;
 
   @ApiProperty({
     description: 'Date de création du signalement',

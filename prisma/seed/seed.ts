@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { PrismaClient } from '../../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcryptjs';
+import { seedAdmins } from './seed-admins';
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -80,27 +81,39 @@ const ID = {
 };
 
 async function main() {
+  // Le seed cree des comptes avec des mots de passe connus et reinitialise des
+  // donnees de demonstration. La CI le rejoue a chaque deploiement : sans cette
+  // garde, un deploiement de production repeuplerait la base avec ces comptes.
+  if (process.env.NODE_ENV === 'production' && !process.env.ALLOW_PROD_SEED) {
+    throw new Error(
+      'Seed refuse en production. Definir ALLOW_PROD_SEED=1 pour forcer.',
+    );
+  }
+
   console.log('🌱 Seeding database...');
 
   const hash = await bcrypt.hash('password', await bcrypt.genSalt());
 
+  // ADMINS (back-office)
+  const admins = await seedAdmins(prisma);
+
   // ── USERS ────────────────────────────────────────────────────────────────────
   // Upsert by email (unique). If user already exists with a random UUID (created
   // via the API), we keep their real ID and capture it for use in FK references below.
-  const admin = await prisma.user.upsert({
+  const admin = await prisma.member.upsert({
     where: { email: 'admin@agence.ci' },
     update: { emailVerified: true },
     create: {
       fullname: 'Admin Principal',
       email: 'admin@agence.ci',
       password: hash,
-      role: 'ADMIN',
+      role: 'MEMBER',
       phone: '+2250101010101',
       emailVerified: true,
     },
   });
 
-  const member1 = await prisma.user.upsert({
+  const member1 = await prisma.member.upsert({
     where: { email: 'kouame.jean@citoyen.ci' },
     update: { emailVerified: true },
     create: {
@@ -113,7 +126,7 @@ async function main() {
     },
   });
 
-  const member2 = await prisma.user.upsert({
+  const member2 = await prisma.member.upsert({
     where: { email: 'aya.fatou@citoyen.ci' },
     update: { emailVerified: true },
     create: {
@@ -196,7 +209,7 @@ async function main() {
       title: 'Les bases de la citoyenneté',
       description: 'Testez vos connaissances sur les droits et devoirs fondamentaux du citoyen ivoirien.',
       difficulte: 'FACILE',
-      authorId: admin.id,
+      authorId: admins.national.id,
       categorieId: ID.catQuiz.civique,
     },
   });
@@ -209,7 +222,7 @@ async function main() {
       title: 'Histoire et institutions de la RCI',
       description: "Quiz sur les grandes dates, les symboles et les institutions de la Côte d'Ivoire.",
       difficulte: 'MOYEN',
-      authorId: admin.id,
+      authorId: admins.national.id,
       categorieId: ID.catQuiz.histoire,
     },
   });
@@ -295,9 +308,9 @@ async function main() {
 
   // ── DOCUMENTS ─────────────────────────────────────────────────────────────────
   const documentsData = [
-    { id: ID.documents.d1, title: "Constitution de la République de Côte d'Ivoire", description: 'Texte intégral de la Constitution ivoirienne révisée en 2016.', fileUrl: '/documents/constitution-ci-2016.pdf', fileType: 'pdf', uploadedById: admin.id },
-    { id: ID.documents.d2, title: 'Guide du citoyen ivoirien', description: 'Guide pratique sur les droits, devoirs et démarches administratives du citoyen.', fileUrl: '/documents/guide-citoyen-ci.pdf', fileType: 'pdf', uploadedById: admin.id },
-    { id: ID.documents.d3, title: 'Rapport annuel Citoyen+ 2024', description: 'Bilan des activités et signalements traités par la plateforme en 2024.', fileUrl: '/documents/rapport-onmec-2024.pdf', fileType: 'pdf', uploadedById: admin.id },
+    { id: ID.documents.d1, title: "Constitution de la République de Côte d'Ivoire", description: 'Texte intégral de la Constitution ivoirienne révisée en 2016.', fileUrl: '/documents/constitution-ci-2016.pdf', fileType: 'pdf', uploadedById: admins.national.id },
+    { id: ID.documents.d2, title: 'Guide du citoyen ivoirien', description: 'Guide pratique sur les droits, devoirs et démarches administratives du citoyen.', fileUrl: '/documents/guide-citoyen-ci.pdf', fileType: 'pdf', uploadedById: admins.national.id },
+    { id: ID.documents.d3, title: 'Rapport annuel Citoyen+ 2024', description: 'Bilan des activités et signalements traités par la plateforme en 2024.', fileUrl: '/documents/rapport-onmec-2024.pdf', fileType: 'pdf', uploadedById: admins.national.id },
   ];
 
   for (const d of documentsData) {
@@ -321,9 +334,14 @@ async function main() {
   console.log('✅ Notifications seeded');
 
   console.log('\n🎉 Seed terminé avec succès !');
-  console.log('   admin@agence.ci              (ADMIN)  — mot de passe: password');
-  console.log('   kouame.jean@citoyen.ci       (MEMBER) — mot de passe: password');
-  console.log('   aya.fatou@citoyen.ci         (MEMBER) — mot de passe: password');
+  console.log('\n   Back-office — mot de passe: SEED_ADMIN_PASSWORD (à changer à la 1re connexion) :');
+  console.log('   national@mec-ci.org          (ADMIN_NATIONAL)');
+  console.log('   communication@mec-ci.org     (CHARGE_COMMUNICATION)');
+  console.log('   moderation@mec-ci.org        (MODERATEUR)');
+  console.log('\n   Membres — mot de passe: password :');
+  console.log('   admin@agence.ci');
+  console.log('   kouame.jean@citoyen.ci');
+  console.log('   aya.fatou@citoyen.ci');
 }
 
 main()

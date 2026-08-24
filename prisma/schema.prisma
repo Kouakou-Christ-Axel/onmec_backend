@@ -10,42 +10,120 @@ datasource db {
   provider = "postgresql"
 }
 
+// Vestige de l'ancien modèle unifié `User`. Conservé le temps de la phase A
+// pour que le code existant compile ; supprimé en phase B avec la migration
+// `drop_member_role`.
 enum UserRole {
   ADMIN
   MEMBER
 }
 
-model User {
+// Rôles du back-office. Un admin porte exactement un rôle.
+enum AdminRole {
+  ADMIN_NATIONAL
+  CHARGE_COMMUNICATION
+  MODERATEUR
+}
+
+// Cycle de vie d'un compte membre, distinct du soft-delete (`deletedAt`).
+enum StatutMembre {
+  ACTIF
+  SUSPENDU
+  BANNI
+}
+
+// Cloisonne les OTP : un code émis pour la vérification d'email ne peut pas
+// servir à réinitialiser un mot de passe (et réciproquement).
+enum OtpPurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+enum StatutActualite {
+  BROUILLON
+  PUBLIEE
+  ARCHIVEE
+}
+
+// Compte du back-office. Séparé des membres : cycle de vie, rôles et flux
+// d'authentification n'ont rien en commun.
+model Admin {
   id       String  @id @default(uuid()) @db.Uuid
   fullname String  @db.VarChar
   email    String  @unique @db.VarChar
   phone    String? @db.VarChar
   password String  @db.VarChar
 
-  role UserRole @default(MEMBER)
+  role AdminRole
 
-  emailVerified Boolean @default(false)
-  otpSecret     String? @db.VarChar
-
-  // Avatar (chemin/URL de la photo de profil, optionnel)
   avatar String? @db.VarChar
+
+  isActive           Boolean   @default(true)
+  mustChangePassword Boolean   @default(true)
+  lastLoginAt        DateTime?
+
+  otpSecret    String?     @db.VarChar
+  otpPurpose   OtpPurpose?
+  otpExpiresAt DateTime?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  Document           Document[]
+  actualites       Actualite[] @relation("ActualiteAuthor")
+  documents        Document[]
+  quizzes          Quiz[]      @relation("QuizAuthor")
+  membresSuspendus Member[]    @relation("MemberSuspendedBy")
+
+  @@index([role])
+  @@map("admins")
+}
+
+// Ancien modèle `User`, renommé. La table `users` est renommée en `members`
+// (ALTER TABLE ... RENAME), ce qui préserve les clés étrangères entrantes.
+model Member {
+  id       String  @id @default(uuid()) @db.Uuid
+  fullname String  @db.VarChar
+  email    String  @unique @db.VarChar
+  phone    String? @db.VarChar
+  password String  @db.VarChar
+
+  // Vestige phase A : supprimé en phase B (le type d'acteur remplace le rôle).
+  role UserRole @default(MEMBER)
+
+  emailVerified Boolean @default(false)
+
+  otpSecret    String?     @db.VarChar
+  otpPurpose   OtpPurpose?
+  otpExpiresAt DateTime?
+
+  // Avatar (chemin/URL de la photo de profil, optionnel)
+  avatar String? @db.VarChar
+
+  // Modération du compte par un admin. Distinct de `deletedAt`, qui reste
+  // réservé à la suppression de compte.
+  statut           StatutMembre @default(ACTIF)
+  suspendedAt      DateTime?
+  suspensionRaison String?      @db.Text
+  suspendedById    String?      @db.Uuid
+  suspendedBy      Admin?       @relation("MemberSuspendedBy", fields: [suspendedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
   SignalementCitoyen SignalementCitoyen[]
   Notification       Notification[]
   DeviceToken        DeviceToken[]
   UserQuiz           UserQuiz[]
-  Quiz               Quiz[]               @relation("QuizAuthor")
   Reaction           Reaction[]
   Commentaire        Commentaire[]
   UserGamification   UserGamification?
   PointTransaction   PointTransaction[]
 
-  @@map("users")
+  @@index([statut])
+  @@index([deletedAt])
+  @@map("members")
 }
 
 model Document {
@@ -57,7 +135,8 @@ model Document {
   fileUrl      String // chemin local ou URL vers le fichier uploadé
   fileType     String // ex: "pdf", "docx", "epub"
   uploadedAt   DateTime @default(now())
-  uploadedBy   User?    @relation(fields: [uploadedById], references: [id])
+  // La librairie est alimentée depuis le back-office.
+  uploadedBy   Admin?   @relation(fields: [uploadedById], references: [id])
   uploadedById String?  @db.Uuid
 }
 
@@ -101,7 +180,7 @@ model SignalementCitoyen {
   statut StatutSignalement @default(NOUVEAU)
 
   citoyenId String? @db.Uuid
-  citoyen   User?   @relation(fields: [citoyenId], references: [id])
+  citoyen   Member? @relation(fields: [citoyenId], references: [id])
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -132,7 +211,7 @@ model CategorieQuiz {
   @@map("categories_quiz")
 }
 
-// Quiz créés par les utilisateurs
+// Quiz créés depuis le back-office
 model Quiz {
   id          String          @id @default(uuid()) @db.Uuid
   title       String
@@ -141,8 +220,9 @@ model Quiz {
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
-  authorId    String         @db.Uuid
-  author      User           @relation("QuizAuthor", fields: [authorId], references: [id])
+  // Nullable : un admin peut être supprimé sans détruire ses quiz.
+  authorId    String?        @db.Uuid
+  author      Admin?         @relation("QuizAuthor", fields: [authorId], references: [id])
   categorieId String?        @db.Uuid
   categorie   CategorieQuiz? @relation(fields: [categorieId], references: [id])
 
@@ -180,7 +260,7 @@ model UserQuiz {
   score       Int
   completedAt DateTime?
 
-  user    User         @relation(fields: [userId], references: [id])
+  user    Member       @relation(fields: [userId], references: [id])
   quiz    Quiz         @relation(fields: [quizId], references: [id])
   answers UserAnswer[]
 }
@@ -197,7 +277,7 @@ model UserAnswer {
   choice   Choice   @relation(fields: [choiceId], references: [id])
 }
 
-// Notifications pour les utilisateurs
+// Notifications pour les membres
 model Notification {
   id        String   @id @default(uuid()) @db.Uuid
   title     String
@@ -207,7 +287,7 @@ model Notification {
   createdAt DateTime @default(now())
 
   userId String @db.Uuid
-  user   User   @relation(fields: [userId], references: [id])
+  user   Member @relation(fields: [userId], references: [id])
 }
 
 // Tokens de périphériques pour les notifications push
@@ -218,7 +298,7 @@ model DeviceToken {
   createdAt DateTime @default(now())
 
   userId String? @db.Uuid
-  user   User?   @relation(fields: [userId], references: [id])
+  user   Member? @relation(fields: [userId], references: [id])
 }
 
 model Actualite {
@@ -232,19 +312,30 @@ model Actualite {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Workflow éditorial. Le défaut bascule sur BROUILLON en phase C ; il reste
+  // PUBLIEE en phase A pour ne pas dépublier l'existant à la migration.
+  statut      StatutActualite @default(PUBLIEE)
+  publishedAt DateTime?
+  deletedAt   DateTime?
+
+  authorId String? @db.Uuid
+  author   Admin?  @relation("ActualiteAuthor", fields: [authorId], references: [id])
+
   reactions    Reaction[]
   commentaires Commentaire[]
 
-  @@index([slug])
+  @@index([statut, date(sort: Desc)])
+  @@index([deletedAt])
+  @@map("actualites")
 }
 
-// Réaction (like) d'un utilisateur sur un signalement OU une actualité.
+// Réaction (like) d'un membre sur un signalement OU une actualité.
 // Une seule des deux cibles (signalementId / actualiteId) est renseignée.
 model Reaction {
   id String @id @default(uuid()) @db.Uuid
 
   userId String @db.Uuid
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   Member @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   signalementId String?             @db.Uuid
   signalement   SignalementCitoyen? @relation(fields: [signalementId], references: [id], onDelete: Cascade)
@@ -262,14 +353,14 @@ model Reaction {
   @@map("reactions")
 }
 
-// Commentaire d'un utilisateur sur un signalement OU une actualité.
+// Commentaire d'un membre sur un signalement OU une actualité.
 // Une seule des deux cibles (signalementId / actualiteId) est renseignée.
 model Commentaire {
   id      String @id @default(uuid()) @db.Uuid
   contenu String @db.Text
 
   userId String @db.Uuid
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   Member @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   signalementId String?             @db.Uuid
   signalement   SignalementCitoyen? @relation(fields: [signalementId], references: [id], onDelete: Cascade)
@@ -287,11 +378,15 @@ model Commentaire {
   @@map("commentaires")
 }
 
-// État de gamification d'un utilisateur : points cumulés et niveau dérivé.
-// Une seule ligne par utilisateur (relation 1-1 via userId unique).
+// État de gamification d'un membre : points cumulés et niveau dérivé.
+// Une seule ligne par membre (relation 1-1 via userId unique).
+// La PK est `userId` : ne pas introduire de colonne `id`, cela casserait
+// le renommage de la table parente. `@id` (et non `@unique`) reflete la
+// contrainte reellement presente en base et supprime l'index unique
+// redondant que portait la table.
 model UserGamification {
-  userId String @db.Uuid @unique
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @id @db.Uuid
+  user   Member @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   points Int @default(0)
   niveau Int @default(1)
@@ -306,7 +401,7 @@ model PointTransaction {
   id String @id @default(uuid()) @db.Uuid
 
   userId String @db.Uuid
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   Member @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   points Int
   raison String

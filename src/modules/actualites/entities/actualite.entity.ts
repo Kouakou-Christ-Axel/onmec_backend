@@ -1,4 +1,4 @@
-import {Actualite} from "../../../generated/prisma/client";
+import {Actualite, StatutActualite} from "../../../generated/prisma/client";
 
 export class ActualiteEntity implements Actualite {
 	id: string;
@@ -8,6 +8,10 @@ export class ActualiteEntity implements Actualite {
 	imageUrl: string | null;
 	title: string;
 	content: string;
+	statut: StatutActualite;
+	publishedAt: Date | null;
+	authorId: string | null;
 	createdAt: Date;
 	updatedAt: Date;
+	deletedAt: Date | null;
 }

@@ -4,7 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { User, UserRole } from '../../generated/prisma/client';
+import { Member, UserRole } from '../../generated/prisma/client';
 import { PrismaService } from '../../database/services/prisma.service';
 import { CreateCommentaireDto } from './dto/create-commentaire.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
@@ -159,7 +159,7 @@ export class EngagementService {
     target: EngagementTarget,
     targetId: string,
     commentaireId: string,
-    user: User,
+    user: Member,
   ): Promise<void> {
     const commentaire = await this.prisma.commentaire.findUnique({
       where: { id: commentaireId },

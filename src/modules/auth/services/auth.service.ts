@@ -8,7 +8,7 @@ import {
 import { PrismaService } from 'src/database/services/prisma.service';
 import * as bcrypt from 'bcryptjs';
 import { Request } from 'express';
-import { User, UserRole } from '../../../generated/prisma/client';
+import { Member, UserRole } from '../../../generated/prisma/client';
 import { LoginUserDto } from 'src/modules/auth/dto/login-user.dto';
 import { JsonWebTokenService } from 'src/json-web-token/json-web-token.service';
 import { permissionsByRole, RolePermissions } from 'src/common/constantes/permissionsByRole';
@@ -63,7 +63,7 @@ export class AuthService {
     }
   }
 
-  private buildAuthResponse(user: User, tokens: TokenResponse): AuthResponse {
+  private buildAuthResponse(user: Member, tokens: TokenResponse): AuthResponse {
     return {
       id: user.id,
       email: user.email,
@@ -98,7 +98,7 @@ export class AuthService {
         message: `Tentative de connexion pour: ${loginUserDto.email}`,
       });
 
-      const user = await this.prisma.user.findUnique({
+      const user = await this.prisma.member.findUnique({
         where: { email: loginUserDto.email },
       });
 
@@ -145,7 +145,7 @@ export class AuthService {
         message: `Tentative d'enregistrement pour: ${registerUserDto.email}`,
       });
 
-      const existingUser = await this.prisma.user.findUnique({
+      const existingUser = await this.prisma.member.findUnique({
         where: { email: registerUserDto.email },
       });
 
@@ -156,7 +156,7 @@ export class AuthService {
       const hashedPassword = await bcrypt.hash(registerUserDto.password, 10);
       const { secret, otp } = this.generateEmailOtp();
 
-      const newUser = await this.prisma.user.create({
+      const newUser = await this.prisma.member.create({
         data: {
           email: registerUserDto.email,
           password: hashedPassword,
@@ -190,7 +190,7 @@ export class AuthService {
    */
   async verifyEmail(dto: VerifyEmailOtpDto): Promise<AuthResponse> {
     try {
-      const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+      const user = await this.prisma.member.findUnique({ where: { email: dto.email } });
 
       if (!user) {
         throw new NotFoundException('Utilisateur non trouvé');
@@ -210,7 +210,7 @@ export class AuthService {
         throw new BadRequestException('Code OTP invalide ou expiré');
       }
 
-      const verifiedUser = await this.prisma.user.update({
+      const verifiedUser = await this.prisma.member.update({
         where: { id: user.id },
         data: { emailVerified: true, otpSecret: null },
       });
@@ -234,7 +234,7 @@ export class AuthService {
    */
   async resendEmailOtp(dto: ResendEmailOtpDto): Promise<{ message: string }> {
     try {
-      const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+      const user = await this.prisma.member.findUnique({ where: { email: dto.email } });
 
       if (!user) {
         throw new NotFoundException('Utilisateur non trouvé');
@@ -246,7 +246,7 @@ export class AuthService {
 
       const { secret, otp } = this.generateEmailOtp();
 
-      await this.prisma.user.update({
+      await this.prisma.member.update({
         where: { id: user.id },
         data: { otpSecret: secret },
       });
@@ -268,7 +268,7 @@ export class AuthService {
    */
   async refreshToken(req: Request): Promise<TokenResponse> {
     try {
-      const user = req.user as User;
+      const user = req.user as Member;
 
       if (!user || !user.id) {
         throw new BadRequestException('Utilisateur non authentifié');
@@ -297,7 +297,7 @@ export class AuthService {
     };
 
     try {
-      const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+      const user = await this.prisma.member.findUnique({ where: { email: dto.email } });
 
       // On ne révèle pas l'inexistence du compte.
       if (!user) {
@@ -306,7 +306,7 @@ export class AuthService {
 
       const { secret, otp } = this.generateEmailOtp();
 
-      await this.prisma.user.update({
+      await this.prisma.member.update({
         where: { id: user.id },
         data: { otpSecret: secret },
       });
@@ -328,7 +328,7 @@ export class AuthService {
    */
   async resetPassword(dto: ResetPasswordDto): Promise<{ message: string }> {
     try {
-      const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+      const user = await this.prisma.member.findUnique({ where: { email: dto.email } });
 
       if (!user) {
         throw new NotFoundException('Utilisateur non trouvé');
@@ -346,7 +346,7 @@ export class AuthService {
 
       const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-      await this.prisma.user.update({
+      await this.prisma.member.update({
         where: { id: user.id },
         data: { password: hashedPassword, otpSecret: null },
       });

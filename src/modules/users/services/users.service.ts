@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 
 import { CreateUserDto } from '../dto/create-user.dto';
-import { Prisma, User, UserRole } from '../../../generated/prisma/client';
+import { Prisma, Member, UserRole } from '../../../generated/prisma/client';
 import { SearchUserDto } from '../dto/search-user.dto';
 import { Request } from 'express';
 import { PrismaService } from 'src/database/services/prisma.service';
@@ -32,7 +32,7 @@ export class UsersService {
     // Créer l'utilisateur (le rôle fourni est respecté, MEMBER par défaut)
     // L'image téléversée (chemin fourni par le contrôleur) est persistée dans `avatar`.
     const { image, ...userData } = createUserDto;
-    const newUser = await this.prisma.user.create({
+    const newUser = await this.prisma.member.create({
       data: {
         ...userData,
         password: hash,
@@ -49,9 +49,9 @@ export class UsersService {
     req: Request,
     createUserDto: CreateUserDto,
   ) {
-    const user = req.user as User;
+    const user = req.user as Member;
     // Vérification de l'existence de l'utilisateur
-    const userExist = await this.prisma.user.findUnique({
+    const userExist = await this.prisma.member.findUnique({
       where: {
         email: createUserDto.email,
       },
@@ -78,7 +78,7 @@ export class UsersService {
 
     // Créer l'utilisateur
     const { image, ...userData } = createUserDto;
-    const newUser = await this.prisma.user.create({
+    const newUser = await this.prisma.member.create({
       data: {
         ...userData,
         password: hash,
@@ -97,7 +97,7 @@ export class UsersService {
     const limit = query.limit ?? 10;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.UserWhereInput = {};
+    const where: Prisma.MemberWhereInput = {};
 
     if (query.search) {
       where.OR = [
@@ -118,14 +118,14 @@ export class UsersService {
     }
 
     const [data, total] = await this.prisma.$transaction([
-      this.prisma.user.findMany({
+      this.prisma.member.findMany({
         where: Object.keys(where).length ? where : undefined,
         orderBy: { updatedAt: 'desc' },
         omit: { password: true },
         skip,
         take: limit,
       }),
-      this.prisma.user.count({
+      this.prisma.member.count({
         where: Object.keys(where).length ? where : undefined,
       }),
     ]);
@@ -143,7 +143,7 @@ export class UsersService {
 
   // FIND_ONE (par id)
   async findOneById(id: string) {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.prisma.member.findUnique({
       where: { id },
       omit: { password: true },
     });
@@ -157,13 +157,13 @@ export class UsersService {
 
   // UPDATE (par id - Admin)
   async updateById(id: string, updateUserDto: UpdateUserDto) {
-    const exist = await this.prisma.user.findUnique({ where: { id } });
+    const exist = await this.prisma.member.findUnique({ where: { id } });
     if (!exist) {
       throw new NotFoundException('Utilisateur non trouvé');
     }
 
     const { image, ...userData } = updateUserDto;
-    return await this.prisma.user.update({
+    return await this.prisma.member.update({
       where: { id },
       data: { ...userData, avatar: image },
       omit: { password: true },
@@ -172,12 +172,12 @@ export class UsersService {
 
   // LOCK / UNLOCK (par id - Admin)
   async setLockState(id: string, locked: boolean) {
-    const exist = await this.prisma.user.findUnique({ where: { id } });
+    const exist = await this.prisma.member.findUnique({ where: { id } });
     if (!exist) {
       throw new NotFoundException('Utilisateur non trouvé');
     }
 
-    return await this.prisma.user.update({
+    return await this.prisma.member.update({
       where: { id },
       data: { deletedAt: locked ? new Date() : null },
       omit: { password: true },
@@ -186,12 +186,12 @@ export class UsersService {
 
   // DELETE (par id - Admin)
   async removeById(id: string) {
-    const exist = await this.prisma.user.findUnique({ where: { id } });
+    const exist = await this.prisma.member.findUnique({ where: { id } });
     if (!exist) {
       throw new NotFoundException('Utilisateur non trouvé');
     }
 
-    await this.prisma.user.delete({ where: { id } });
+    await this.prisma.member.delete({ where: { id } });
 
     return {
       success: true,
@@ -201,8 +201,8 @@ export class UsersService {
 
   // DETAIL
   async detail(req: Request) {
-    const user = req.user as User;
-    const profile = await this.prisma.user.findUnique({
+    const user = req.user as Member;
+    const profile = await this.prisma.member.findUnique({
       where: {
         id: user.id,
       },
@@ -218,11 +218,11 @@ export class UsersService {
 
   // UPDATE
   async update(req: Request, updateUserDto: UpdateUserDto) {
-    const user = req.user as User;
+    const user = req.user as Member;
 
     // L'image téléversée (chemin fourni par le contrôleur) est persistée dans `avatar`.
     const { image, ...userData } = updateUserDto;
-    const newUser = await this.prisma.user.update({
+    const newUser = await this.prisma.member.update({
       where: {
         id: user.id,
       },
@@ -239,7 +239,7 @@ export class UsersService {
     req: Request,
     updateUserPasswordDto: UpdateUserPasswordDto,
   ) {
-    const user = req.user as User;
+    const user = req.user as Member;
 
     const { oldPassword, password: pass, confirmPassword } = updateUserPasswordDto;
 
@@ -248,7 +248,7 @@ export class UsersService {
     }
 
     // Récupérer le hash actuel (exclu de req.user) pour vérifier l'ancien mot de passe
-    const currentUser = await this.prisma.user.findUnique({
+    const currentUser = await this.prisma.member.findUnique({
       where: { id: user.id },
       select: { password: true },
     });
@@ -269,7 +269,7 @@ export class UsersService {
     const salt = await bcrypt.genSalt();
     const hash = await bcrypt.hash(pass, salt);
 
-    const newUser = await this.prisma.user.update({
+    const newUser = await this.prisma.member.update({
       where: {
         id: user.id,
       },
@@ -292,7 +292,7 @@ export class UsersService {
     const salt = await bcrypt.genSalt();
     const hash = await bcrypt.hash(pass, salt);
 
-    const user = await this.prisma.user.update({
+    const user = await this.prisma.member.update({
       where: {
         id: user_id,
       },
@@ -313,9 +313,9 @@ export class UsersService {
 
   // PARTIAL DELETE
   async partialRemove(req: Request) {
-    const user = req.user as User;
+    const user = req.user as Member;
 
-    return await this.prisma.user.update({
+    return await this.prisma.member.update({
       where: {
         id: user.id,
       },
@@ -327,7 +327,7 @@ export class UsersService {
 
   // RESTAURATION
   async restore(req: Request, id: string) {
-    return await this.prisma.user.update({
+    return await this.prisma.member.update({
       where: {
         id: id,
       },
@@ -339,7 +339,7 @@ export class UsersService {
 
   // DELETE
   async remove(req: Request, id: string) {
-    const deletedUser = await this.prisma.user.delete({
+    const deletedUser = await this.prisma.member.delete({
       where: {
         id: id,
       },

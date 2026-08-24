@@ -10,7 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { User } from '../../generated/prisma/client';
+import { Member } from '../../generated/prisma/client';
 import {
   ApiBearerAuth,
   ApiOkResponse,
@@ -43,7 +43,7 @@ export class GamificationController {
   @ApiOkResponse({ description: 'État de gamification', type: GamificationStateDto })
   @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Non authentifié' })
   getMe(@Req() req: Request) {
-    const user = req.user as User;
+    const user = req.user as Member;
     return this.gamificationService.getEtat(user.id);
   }
 
@@ -57,7 +57,7 @@ export class GamificationController {
   @ApiOkResponse({ description: 'État de gamification mis à jour', type: GamificationStateDto })
   @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Non authentifié' })
   addPoints(@Body() dto: AddPointsDto, @Req() req: Request) {
-    const user = req.user as User;
+    const user = req.user as Member;
     return this.gamificationService.ajouterPoints(user.id, dto);
   }
 

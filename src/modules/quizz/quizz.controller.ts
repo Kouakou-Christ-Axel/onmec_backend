@@ -25,7 +25,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { User, UserRole } from '../../generated/prisma/client';
+import { Member, UserRole } from '../../generated/prisma/client';
 import { Request } from 'express';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -60,7 +60,7 @@ export class QuizzController {
   @ApiUnauthorizedResponse({ description: 'Non authentifié' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Accès réservé aux administrateurs' })
   create(@Req() req: Request, @Body() createQuizzDto: CreateQuizzDto) {
-    const user = req.user as User;
+    const user = req.user as Member;
     return this.quizService.create(createQuizzDto, user.id);
   }
 
@@ -73,7 +73,7 @@ export class QuizzController {
   @ApiNotFoundResponse({ description: 'Quiz non trouvé' })
   @ApiUnauthorizedResponse({ description: 'Non authentifié' })
   submitAnswers(@Req() req: Request, @Body() submitAnswerDto: SubmitAnswerDto) {
-    const user = req.user as User;
+    const user = req.user as Member;
     // L'auteur de la soumission est toujours l'utilisateur authentifié : on
     // ignore tout userId fourni par le client (anti-usurpation).
     submitAnswerDto.userId = user.id;
@@ -161,7 +161,7 @@ export class QuizzController {
   @ApiUnauthorizedResponse({ description: 'Non authentifié' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Accès non autorisé aux résultats d\'un autre utilisateur' })
   getUserResults(@Req() req: Request, @Param('userId') userId: string) {
-    const user = req.user as User;
+    const user = req.user as Member;
     if (user.id !== userId && user.role !== UserRole.ADMIN) {
       throw new ForbiddenException(
         'Vous ne pouvez consulter que vos propres résultats.',

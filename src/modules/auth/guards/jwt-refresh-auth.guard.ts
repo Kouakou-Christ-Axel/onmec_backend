@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common/decorators';
 import { AuthGuard } from '@nestjs/passport';
 import { ExecutionContext } from '@nestjs/common';
 import { UnauthorizedException } from '@nestjs/common';
-import { User } from '../../../generated/prisma/client';
+import { Member } from '../../../generated/prisma/client';
 
 @Injectable()
 export class JwtRefreshAuthGuard extends AuthGuard('jwt-refresh') {
@@ -17,7 +17,7 @@ export class JwtRefreshAuthGuard extends AuthGuard('jwt-refresh') {
 
     // Si l'utilisateur est authentifié
     const request = context.switchToHttp().getRequest();
-    const user = request.user as User;
+    const user = request.user as Member;
 
     // Si l'utilisateur est supprimé
     if (user.deletedAt) {
