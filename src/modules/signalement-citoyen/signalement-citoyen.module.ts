@@ -5,9 +5,10 @@ import { CategorieSignalementController } from './categorie-signalement/categori
 import { CategorieSignalementService } from './categorie-signalement/categorie-signalement.service';
 import { EngagementModule } from '../engagement/engagement.module';
 import { GamificationModule } from '../gamification/gamification.module';
+import { NotificationModule } from '../notification/notification.module';
 
 @Module({
-  imports: [EngagementModule, GamificationModule],
+  imports: [EngagementModule, GamificationModule, NotificationModule],
   controllers: [SignalementCitoyenController, CategorieSignalementController],
   providers: [SignalementCitoyenService, CategorieSignalementService],
 })

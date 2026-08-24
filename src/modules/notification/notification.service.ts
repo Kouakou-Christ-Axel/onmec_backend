@@ -1,99 +1,274 @@
-import { Injectable, Logger } from '@nestjs/common';
-import * as admin from 'firebase-admin';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../../database/services/prisma.service';
+import { PushService } from './push.service';
+import { StatutMembre } from '../../generated/prisma/client';
 import {
-  MultipleDeviceNotificationDto,
-  NotificationDto,
-  TopicNotificationDto,
+  NotificationListQueryDto,
+  NotificationResponseDto,
+  PaginatedNotificationsDto,
 } from './dto/notification.dto';
+
+/**
+ * Valeurs emises dans `Notification.type`.
+ *
+ * Contrat avec le front : il s'en sert pour choisir une icone et une action.
+ * `type` reste une colonne texte cote base (voir le commentaire du modele),
+ * cette constante en est la source de verite applicative.
+ */
+export const NOTIFICATION_TYPE = {
+  ACTUALITE_PUBLIEE: 'actualite_publiee',
+  SIGNALEMENT_STATUT: 'signalement_statut',
+  SIGNALEMENT_COMMENTAIRE: 'signalement_commentaire',
+  COMMENTAIRE_MODERE: 'commentaire_modere',
+} as const;
+
+export type NotificationType =
+  (typeof NOTIFICATION_TYPE)[keyof typeof NOTIFICATION_TYPE];
+
+/** Firebase refuse un multicast au-dela de 500 jetons. */
+const TAILLE_LOT_PUSH = 500;
+
+/** Bornes du fil : au-dela, l'application mobile pagine. */
+const LIMITE_PAR_DEFAUT = 20;
+
+interface Contenu {
+  type: NotificationType;
+  title: string;
+  body: string;
+  lien?: string;
+}
 
 @Injectable()
 export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
-  async sendNotification({ token, title, body, icon }: NotificationDto) {
-    this.logger.log({
-      message: 'Sending notification',
-      title,
-      token,
-    });
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly push: PushService,
+  ) {}
+
+  // --- Emission -------------------------------------------------------------
+
+  /**
+   * Notifie un membre : une ligne dans son fil, puis une push sur ses appareils.
+   *
+   * L'attente s'arrete a l'ecriture en base. La push part ensuite sans etre
+   * attendue : elle depend de Firebase et du reseau, et l'action qui a
+   * declenche la notification (publication, changement de statut, moderation)
+   * est deja enregistree — la faire echouer parce qu'un jeton d'appareil est
+   * perime serait absurde.
+   */
+  async notifierMembre(userId: string, contenu: Contenu): Promise<void> {
     try {
-      return await admin.messaging().send({
-        token,
-        webpush: {
-          notification: {
-            title,
-            body,
-            icon,
-          },
+      await this.prisma.notification.create({
+        data: {
+          userId,
+          type: contenu.type,
+          title: contenu.title,
+          body: contenu.body,
+          lien: contenu.lien,
         },
       });
     } catch (error) {
-      this.logger.error('Error sending notification', error);
-      throw error;
+      this.logger.error(
+        `Echec de l'ecriture de la notification ${contenu.type} pour le membre ${userId}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      return;
     }
+
+    void this.pousserVersMembre(userId, contenu);
   }
 
-  async sendNotificationToMultipleTokens({
-    tokens,
-    title,
-    body,
-    icon,
-  }: MultipleDeviceNotificationDto) {
-    this.logger.log({
-      message: 'Sending notifications to multiple tokens',
-      title,
-      tokensCount: tokens.length,
-    })
-    const message = {
-      notification: {
-        title,
-        body,
-        icon,
-      },
-      tokens,
-    };
+  /**
+   * Notifie tous les membres actifs. Utilise a la publication d'une actualite.
+   *
+   * `createMany` en une instruction plutot qu'une boucle : sur une base de
+   * plusieurs milliers de membres, la difference n'est pas cosmetique.
+   */
+  async diffuserATousLesMembres(contenu: Contenu): Promise<number> {
+    const membres = await this.prisma.member.findMany({
+      where: { deletedAt: null, statut: StatutMembre.ACTIF },
+      select: { id: true },
+    });
+
+    if (membres.length === 0) return 0;
 
     try {
-      const response = await admin.messaging().sendEachForMulticast(message);
-      this.logger.log({
-        message: 'Successfully sent messages',
-        successCount: response.successCount,
-        failureCount: response.failureCount,
-      })
-      return {
-        success: true,
-        message: `Successfully sent ${response.successCount} messages; ${response.failureCount} failed.`,
-      };
-    } catch (error) {
-      this.logger.error('Error sending messages', error);
-      return { success: false, message: 'Failed to send notifications' };
-    }
-  }
-
-  async sendTopicNotification({
-    topic,
-    title,
-    body,
-    icon,
-  }: TopicNotificationDto) {
-    const message = {
-      notification: {
-        title,
-        body,
-        icon,
-      },
-      topic,
-    };
-
-    try {
-      const response = await admin.messaging().send(message);
-      this.logger.log({
-        message: 'Successfully sent topic message',
-        response,
+      await this.prisma.notification.createMany({
+        data: membres.map((m) => ({
+          userId: m.id,
+          type: contenu.type,
+          title: contenu.title,
+          body: contenu.body,
+          lien: contenu.lien,
+        })),
       });
-      return { success: true, message: 'Topic notification sent successfully' };
     } catch (error) {
-      this.logger.error('Error sending topic message', error);
-      return { success: false, message: 'Failed to send topic notification' };
+      this.logger.error(
+        `Echec de la diffusion ${contenu.type} a ${membres.length} membres`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      return 0;
     }
+
+    void this.pousserVersTous(contenu);
+
+    return membres.length;
+  }
+
+  // --- Push (jamais attendue par l'appelant) --------------------------------
+
+  private async pousserVersMembre(
+    userId: string,
+    contenu: Contenu,
+  ): Promise<void> {
+    try {
+      const appareils = await this.prisma.deviceToken.findMany({
+        where: { userId },
+        select: { token: true },
+      });
+      await this.pousser(
+        appareils.map((a) => a.token),
+        contenu,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Push non delivree au membre ${userId} : ${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
+
+  private async pousserVersTous(contenu: Contenu): Promise<void> {
+    try {
+      // Seuls les appareils rattaches a un membre : un jeton anonyme ne peut
+      // pas etre relie a un fil, le notifier serait incoherent.
+      const appareils = await this.prisma.deviceToken.findMany({
+        where: { userId: { not: null } },
+        select: { token: true },
+      });
+      await this.pousser(
+        appareils.map((a) => a.token),
+        contenu,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Diffusion push non delivree : ${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
+
+  private async pousser(tokens: string[], contenu: Contenu): Promise<void> {
+    for (let i = 0; i < tokens.length; i += TAILLE_LOT_PUSH) {
+      const lot = tokens.slice(i, i + TAILLE_LOT_PUSH);
+      await this.push.sendNotificationToMultipleTokens({
+        tokens: lot,
+        title: contenu.title,
+        body: contenu.body,
+        icon: '',
+      });
+    }
+  }
+
+  // --- Fil ------------------------------------------------------------------
+
+  async lister(
+    userId: string,
+    query: NotificationListQueryDto,
+  ): Promise<PaginatedNotificationsDto> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? LIMITE_PAR_DEFAUT;
+
+    const where = {
+      userId,
+      ...(query.nonLues ? { isRead: false } : {}),
+    };
+
+    const [total, notifications, nonLues] = await Promise.all([
+      this.prisma.notification.count({ where }),
+      this.prisma.notification.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.notification.count({ where: { userId, isRead: false } }),
+    ]);
+
+    return {
+      data: notifications.map((n) => this.mapNotification(n)),
+      total,
+      page,
+      limit,
+      nonLues,
+    };
+  }
+
+  async compterNonLues(userId: string): Promise<{ nonLues: number }> {
+    const nonLues = await this.prisma.notification.count({
+      where: { userId, isRead: false },
+    });
+    return { nonLues };
+  }
+
+  /**
+   * Marque une notification comme lue.
+   *
+   * Le `userId` fait partie du filtre de mise a jour et non d'une verification
+   * prealable : un membre ne peut donc pas marquer lue la notification d'un
+   * autre, et l'absence de ligne touchee vaut 404.
+   */
+  async marquerLue(
+    userId: string,
+    id: string,
+  ): Promise<NotificationResponseDto> {
+    const { count } = await this.prisma.notification.updateMany({
+      where: { id, userId, isRead: false },
+      data: { isRead: true, readAt: new Date() },
+    });
+
+    const notification = await this.prisma.notification.findFirst({
+      where: { id, userId },
+    });
+
+    if (!notification) {
+      throw new NotFoundException(`Notification avec l'id ${id} introuvable`);
+    }
+
+    // count === 0 sur une notification existante signifie « deja lue » :
+    // l'operation est idempotente, pas en erreur.
+    void count;
+
+    return this.mapNotification(notification);
+  }
+
+  async marquerToutesLues(userId: string): Promise<{ marquees: number }> {
+    const { count } = await this.prisma.notification.updateMany({
+      where: { userId, isRead: false },
+      data: { isRead: true, readAt: new Date() },
+    });
+    return { marquees: count };
+  }
+
+  private mapNotification(n: {
+    id: string;
+    title: string;
+    body: string;
+    type: string | null;
+    lien: string | null;
+    isRead: boolean;
+    readAt: Date | null;
+    createdAt: Date;
+  }): NotificationResponseDto {
+    return {
+      id: n.id,
+      title: n.title,
+      body: n.body,
+      type: n.type,
+      lien: n.lien,
+      isRead: n.isRead,
+      readAt: n.readAt,
+      createdAt: n.createdAt,
+    };
   }
 }

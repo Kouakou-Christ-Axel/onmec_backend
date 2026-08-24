@@ -267,16 +267,32 @@ model UserAnswer {
 }
 
 // Notifications pour les membres
+// Fil de notifications in-app d'un membre.
+//
+// `type` reste une chaine libre : les valeurs emises par l'application sont
+// enumerees dans NOTIFICATION_TYPE (notification.service.ts) et documentees
+// pour le front, mais l'historique porte des valeurs anterieures ('welcome',
+// 'new_quiz') qu'une contrainte d'enum aurait obligees a supprimer ou a
+// renommer arbitrairement.
 model Notification {
-  id        String   @id @default(uuid()) @db.Uuid
+  id        String    @id @default(uuid()) @db.Uuid
   title     String
   body      String
   type      String?
-  isRead    Boolean  @default(false)
-  createdAt DateTime @default(now())
+  // Chemin cote front vers le contenu concerne, ex. /actualites/<slug>.
+  lien      String?
+  isRead    Boolean   @default(false)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
 
   userId String @db.Uuid
-  user   Member @relation(fields: [userId], references: [id])
+  // Cascade : supprimer un membre doit emporter son fil. Sans cela la
+  // suppression definitive d'un compte echouait en RESTRICT.
+  user   Member @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Sert le fil pagine et le compteur de non-lues, les deux seules lectures.
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, isRead])
 }
 
 // Tokens de périphériques pour les notifications push

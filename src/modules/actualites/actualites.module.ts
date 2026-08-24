@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ActualitesService } from './actualites.service';
 import { ActualitesController } from './actualites.controller';
 import { EngagementModule } from '../engagement/engagement.module';
+import { NotificationModule } from '../notification/notification.module';
 import { TaxonomieService } from './taxonomie/taxonomie.service';
 import {
   CategorieActualiteController,
@@ -9,7 +10,7 @@ import {
 } from './taxonomie/taxonomie.controller';
 
 @Module({
-  imports: [EngagementModule],
+  imports: [EngagementModule, NotificationModule],
   controllers: [
     ActualitesController,
     CategorieActualiteController,

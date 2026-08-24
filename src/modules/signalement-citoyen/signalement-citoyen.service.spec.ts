@@ -3,6 +3,7 @@ import { SignalementCitoyenService } from './signalement-citoyen.service';
 import { PrismaService } from '../../database/services/prisma.service';
 import { EngagementService } from '../engagement/engagement.service';
 import { GamificationService } from '../gamification/gamification.service';
+import { NotificationService } from '../notification/notification.service';
 
 describe('SignalementCitoyenService', () => {
   let service: SignalementCitoyenService;
@@ -24,6 +25,11 @@ describe('SignalementCitoyenService', () => {
     attribuerSansEchouer: jest.fn().mockResolvedValue(0),
   };
 
+  // Le service previent le citoyen au changement de statut de son signalement.
+  const notificationMock = {
+    notifierMembre: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
     const module: TestingModule = await Test.createTestingModule({
@@ -32,6 +38,7 @@ describe('SignalementCitoyenService', () => {
         { provide: PrismaService, useValue: prismaMock },
         { provide: EngagementService, useValue: engagementMock },
         { provide: GamificationService, useValue: gamificationMock },
+        { provide: NotificationService, useValue: notificationMock },
       ],
     }).compile();
 

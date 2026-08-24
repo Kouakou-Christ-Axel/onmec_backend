@@ -9,6 +9,10 @@ import { PointSource, Prisma } from '../../generated/prisma/client';
 import { isPrismaError } from '../../common/utils/prisma-error';
 import { GamificationService } from '../gamification/gamification.service';
 import { BAREME } from '../gamification/points-bareme';
+import {
+  NOTIFICATION_TYPE,
+  NotificationService,
+} from '../notification/notification.service';
 import { PrismaService } from '../../database/services/prisma.service';
 import { CreateCommentaireDto } from './dto/create-commentaire.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
@@ -32,6 +36,7 @@ export class EngagementService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly gamification: GamificationService,
+    private readonly notifications: NotificationService,
   ) {}
 
   /**
@@ -218,7 +223,38 @@ export class EngagementService {
       raison: `commentaire:${target}`,
     });
 
+    await this.notifierAuteurDuSignalement(target, targetId, userId);
+
     return this.mapCommentaire(commentaire);
+  }
+
+  /**
+   * Previent le citoyen qu'on a commente son signalement.
+   *
+   * Deux garde-fous : on ne notifie pas un signalement anonyme, faute de
+   * destinataire, et on ne notifie pas quelqu'un de son propre commentaire.
+   */
+  private async notifierAuteurDuSignalement(
+    target: EngagementTarget,
+    targetId: string,
+    auteurDuCommentaire: string,
+  ): Promise<void> {
+    if (target !== 'signalement') return;
+
+    const signalement = await this.prisma.signalementCitoyen.findUnique({
+      where: { id: targetId },
+      select: { id: true, titre: true, citoyenId: true },
+    });
+
+    if (!signalement?.citoyenId) return;
+    if (signalement.citoyenId === auteurDuCommentaire) return;
+
+    await this.notifications.notifierMembre(signalement.citoyenId, {
+      type: NOTIFICATION_TYPE.SIGNALEMENT_COMMENTAIRE,
+      title: 'Nouveau commentaire',
+      body: `Quelqu'un a commenté « ${signalement.titre} ».`,
+      lien: `/signalements/${signalement.id}`,
+    });
   }
 
   /**
@@ -340,6 +376,18 @@ export class EngagementService {
         actualite: { select: { id: true, title: true } },
       },
     });
+
+    // On previent a la mise sous silence, pas au retablissement : demasquer un
+    // commentaire, c'est revenir sur une decision, pas notifier son auteur.
+    // `userId` est bien celui de l'auteur du commentaire, jamais celui du
+    // moderateur : `Notification.userId` reference la table des membres.
+    if (masque) {
+      await this.notifications.notifierMembre(commentaire.userId, {
+        type: NOTIFICATION_TYPE.COMMENTAIRE_MODERE,
+        title: 'Votre commentaire a été masqué',
+        body: 'Un modérateur a masqué un de vos commentaires.',
+      });
+    }
 
     return this.mapModerationCommentaire(commentaire);
   }

@@ -22,6 +22,7 @@ diffère.
 python scripts/verification/verify-auth.py
 python scripts/verification/verify-actualites.py
 python scripts/verification/verify-engagement.py
+python scripts/verification/verify-notifications.py
 ```
 
 Code de sortie 0 si toutes les vérifications passent.
@@ -40,6 +41,16 @@ like (aucune erreur serveur sur une rafale), attribution de points dérivée des
 actions réelles, non-refarmabilité (unliker puis reliker ne recrédite pas),
 plafond quotidien des commentaires, obligation du `userId` sur l'ajustement
 back-office, et refus de l'auto-attribution par un membre.
+
+**`verify-notifications.py`** — 34 vérifications : fermeture des trois
+endpoints d'envoi de push (ouverts à Internet auparavant), rattachement des
+appareils au compte déduit du jeton, fil in-app (pagination, compteur de non
+lues, marquage, cloisonnement entre membres) et les quatre déclencheurs —
+publication d'actualité *diffusée une seule fois* malgré un `publier`
+idempotent et un cycle dépublier/republier, changement de statut d'un
+signalement, commentaire d'un tiers sur son signalement, masquage d'un
+commentaire. Firebase n'étant pas joignable en développement, ce script vérifie
+aussi implicitement que le fil est écrit même quand la push échoue.
 
 **`verify-actualites.py`** — 58 vérifications : restriction de la rédaction aux
 rôles éditoriaux, invisibilité des brouillons pour le public *et* pour le

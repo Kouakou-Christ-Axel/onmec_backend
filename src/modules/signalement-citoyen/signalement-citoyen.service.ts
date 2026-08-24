@@ -10,6 +10,10 @@ import {PointSource, StatutSignalement} from "../../generated/prisma/client";
 import {EngagementService} from '../engagement/engagement.service';
 import {GamificationService} from '../gamification/gamification.service';
 import {BAREME} from '../gamification/points-bareme';
+import {
+	NOTIFICATION_TYPE,
+	NotificationService,
+} from '../notification/notification.service';
 
 @Injectable()
 export class SignalementCitoyenService {
@@ -19,6 +23,7 @@ export class SignalementCitoyenService {
 		private readonly prisma: PrismaService,
 		private readonly engagementService: EngagementService,
 		private readonly gamification: GamificationService,
+		private readonly notifications: NotificationService,
 	) {
 	}
 
@@ -418,6 +423,22 @@ export class SignalementCitoyenService {
 					sourceId: misAJour.id,
 					points: BAREME.SIGNALEMENT_VALIDE,
 					raison: 'signalement valide',
+				});
+			}
+
+			// Notification adossee au CHANGEMENT et non a l'appel : le
+			// back-office edite un signalement pour bien d'autres raisons
+			// (correction d'adresse, ajout de photo), et prevenir le citoyen a
+			// chaque enregistrement rendrait la notification insignifiante.
+			const statutChange = signalement.statut !== misAJour.statut;
+			if ((statutChange || vientDEtreValide) && misAJour.citoyenId) {
+				await this.notifications.notifierMembre(misAJour.citoyenId, {
+					type: NOTIFICATION_TYPE.SIGNALEMENT_STATUT,
+					title: 'Votre signalement a été mis à jour',
+					body: vientDEtreValide
+						? `« ${misAJour.titre} » a été validé.`
+						: `« ${misAJour.titre} » est désormais au statut ${misAJour.statut}.`,
+					lien: `/signalements/${misAJour.id}`,
 				});
 			}
 

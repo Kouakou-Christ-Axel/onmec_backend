@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { ActualitesService } from './actualites.service';
 import { PrismaService } from '../../database/services/prisma.service';
 import { EngagementService } from '../engagement/engagement.service';
+import { NotificationService } from '../notification/notification.service';
 import { AdminRole, StatutActualite } from '../../generated/prisma/client';
 import {
   AuthenticatedActor,
@@ -21,6 +22,8 @@ describe('ActualitesService', () => {
         // Sans ce provider, le module de test ne compilait pas et toute la
         // suite échouait.
         { provide: EngagementService, useValue: {} },
+        // Le service diffuse une notification a la premiere publication.
+        { provide: NotificationService, useValue: {} },
       ],
     }).compile();
 

@@ -11,6 +11,10 @@ import { ActualiteEntity } from './entities/actualite.entity';
 import { ConfigService } from '@nestjs/config';
 import { EngagementService } from '../engagement/engagement.service';
 import {
+  NOTIFICATION_TYPE,
+  NotificationService,
+} from '../notification/notification.service';
+import {
   AuthenticatedActor,
   isAdminActor,
 } from 'src/common/types/authenticated-actor';
@@ -53,6 +57,7 @@ export class ActualitesService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly engagementService: EngagementService,
+    private readonly notifications: NotificationService,
   ) {}
 
   /**
@@ -400,6 +405,15 @@ export class ActualitesService {
   async publier(id: string) {
     const actualite = await this.assertExists(id);
 
+    // La notification est adossée à la PREMIÈRE publication, pas à l'appel.
+    // `publier` est idempotent : republier une actualité déjà publiée est un
+    // no-op qui renvoie 200, et notifier sur l'appel aurait donc prévenu tous
+    // les membres autant de fois que le bouton est cliqué. Adosser la
+    // diffusion à `publishedAt` la rend insensible aussi au cycle
+    // dépublier/republier, qui corrige une erreur plutôt qu'il n'annonce une
+    // nouveauté.
+    const premierePublication = actualite.publishedAt === null;
+
     const updated = await this.prisma.actualite.update({
       where: { id },
       data: {
@@ -408,6 +422,15 @@ export class ActualitesService {
       },
       include: ACTUALITE_INCLUDE,
     });
+
+    if (premierePublication) {
+      await this.notifications.diffuserATousLesMembres({
+        type: NOTIFICATION_TYPE.ACTUALITE_PUBLIEE,
+        title: 'Nouvelle actualité',
+        body: updated.title,
+        lien: `/actualites/${updated.slug}`,
+      });
+    }
 
     return this.withEngagement(this.mapToEntity(updated), updated.id);
   }

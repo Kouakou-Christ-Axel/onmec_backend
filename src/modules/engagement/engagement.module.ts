@@ -4,9 +4,10 @@ import { SignalementEngagementController } from './signalement-engagement.contro
 import { ActualiteEngagementController } from './actualite-engagement.controller';
 import { CommentaireModerationController } from './commentaire-moderation.controller';
 import { GamificationModule } from '../gamification/gamification.module';
+import { NotificationModule } from '../notification/notification.module';
 
 @Module({
-  imports: [GamificationModule],
+  imports: [GamificationModule, NotificationModule],
   controllers: [
     SignalementEngagementController,
     ActualiteEngagementController,
