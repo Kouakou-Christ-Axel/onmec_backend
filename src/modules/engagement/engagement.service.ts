@@ -5,8 +5,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
-import { Prisma } from '../../generated/prisma/client';
+import { PointSource, Prisma } from '../../generated/prisma/client';
 import { isPrismaError } from '../../common/utils/prisma-error';
+import { GamificationService } from '../gamification/gamification.service';
+import { BAREME } from '../gamification/points-bareme';
 import { PrismaService } from '../../database/services/prisma.service';
 import { CreateCommentaireDto } from './dto/create-commentaire.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
@@ -27,7 +29,10 @@ export type EngagementTarget = 'signalement' | 'actualite';
 export class EngagementService {
   private readonly logger = new Logger(EngagementService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly gamification: GamificationService,
+  ) {}
 
   /**
    * Construit le filtre Prisma ciblant soit un signalement, soit une actualité.
@@ -125,6 +130,18 @@ export class EngagementService {
       liked = true;
     }
 
+    if (liked) {
+      // Idempotent cote gamification : le sourceId est la cible, donc unliker
+      // puis reliker ne recredite pas.
+      await this.gamification.attribuerSansEchouer({
+        userId,
+        source: PointSource.LIKE,
+        sourceId: targetId,
+        points: BAREME.LIKE,
+        raison: `like:${target}`,
+      });
+    }
+
     const likesCount = await this.prisma.reaction.count({
       where: this.targetWhere(target, targetId),
     });
@@ -188,6 +205,17 @@ export class EngagementService {
       include: {
         user: { select: { id: true, fullname: true, avatar: true } },
       },
+    });
+
+    // Chaque commentaire porte un identifiant different : l'idempotence ne
+    // borne donc rien ici, c'est le plafond quotidien de la source COMMENTAIRE
+    // qui rend le spam sans interet.
+    await this.gamification.attribuerSansEchouer({
+      userId,
+      source: PointSource.COMMENTAIRE,
+      sourceId: commentaire.id,
+      points: BAREME.COMMENTAIRE,
+      raison: `commentaire:${target}`,
     });
 
     return this.mapCommentaire(commentaire);

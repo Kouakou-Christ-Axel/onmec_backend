@@ -1,5 +1,7 @@
-import { Injectable } from '@nestjs/common';
-import { Prisma } from '../../generated/prisma/client';
+import { Injectable, Logger } from '@nestjs/common';
+import { PointSource, Prisma } from '../../generated/prisma/client';
+import { isPrismaError } from '../../common/utils/prisma-error';
+import { PLAFOND_QUOTIDIEN } from './points-bareme';
 import { PrismaService } from '../../database/services/prisma.service';
 import { AddPointsDto } from './dto/add-points.dto';
 import { LeaderboardQueryDto } from './dto/leaderboard-query.dto';
@@ -22,6 +24,8 @@ export const POINTS_PAR_NIVEAU = 100;
 
 @Injectable()
 export class GamificationService {
+  private readonly logger = new Logger(GamificationService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   private calculerNiveau(points: number): number {
@@ -122,19 +126,136 @@ export class GamificationService {
   }
 
   /**
-   * Ajoute des points à l'utilisateur, journalise la transaction et recalcule
-   * le niveau, puis retourne l'état mis à jour.
+   * Ajustement manuel depuis le back-office.
+   *
+   * Reste volontairement non idempotent : `sourceId` est nul, donc l'unicite
+   * de PointTransaction ne s'y applique pas et un administrateur peut crediter
+   * ou debiter un membre autant de fois qu'il le faut.
    */
   async ajouterPoints(userId: string, dto: AddPointsDto): Promise<GamificationStateDto> {
     const etat = await this.prisma.$transaction(async (tx) => {
       await tx.pointTransaction.create({
-        data: { userId, points: dto.points, raison: dto.raison },
+        data: {
+          userId,
+          points: dto.points,
+          raison: dto.raison,
+          source: PointSource.AJUSTEMENT_MANUEL,
+          sourceId: null,
+        },
       });
 
       return this.appliquerDelta(tx, userId, dto.points);
     });
 
     return this.formaterEtat(etat.points, etat.niveau, etat.updatedAt);
+  }
+
+  /**
+   * Somme des points deja gagnes aujourd'hui pour une source donnee.
+   * Sert au plafond quotidien ; la journee est celle du serveur.
+   */
+  private async pointsDuJour(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    source: PointSource,
+  ): Promise<number> {
+    const debutDeJournee = new Date();
+    debutDeJournee.setHours(0, 0, 0, 0);
+
+    const { _sum } = await tx.pointTransaction.aggregate({
+      where: { userId, source, createdAt: { gte: debutDeJournee } },
+      _sum: { points: true },
+    });
+
+    return _sum.points ?? 0;
+  }
+
+  /**
+   * Attribue des points derives d'une action reelle du membre.
+   *
+   * C'est le seul chemin d'attribution automatique : le montant vient du bareme
+   * cote serveur, jamais du client. L'appelant fournit le fait declencheur
+   * (`source` + `sourceId`), et l'unicite de PointTransaction fait le reste :
+   * une seconde tentative sur le meme fait est refusee par la base, pas par une
+   * lecture prealable qu'une requete concurrente pourrait doubler.
+   *
+   * Ne leve pas d'exception quand les points ne sont pas attribues : ne pas
+   * gagner de points est un resultat normal (deja credite, plafond atteint), et
+   * non une erreur de l'action qui l'a declenchee.
+   *
+   * @returns Le nombre de points reellement credites (0 si aucun).
+   */
+  async attribuer(params: {
+    userId: string;
+    source: PointSource;
+    sourceId: string;
+    points: number;
+    raison: string;
+  }): Promise<number> {
+    const { userId, source, sourceId, raison } = params;
+    const plafond = PLAFOND_QUOTIDIEN[source];
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        let points = params.points;
+
+        if (plafond !== undefined) {
+          const restant = plafond - (await this.pointsDuJour(tx, userId, source));
+          if (restant <= 0) return 0;
+          // Attribution partielle plutot que tout ou rien : le membre qui
+          // franchit le plafond en cours de journee touche ce qu'il reste.
+          points = Math.min(points, restant);
+        }
+
+        // Cette insertion est la garde d'idempotence : si le fait a deja ete
+        // credite, la contrainte d'unicite la rejette et la transaction est
+        // annulee avant que les points ne soient appliques.
+        await tx.pointTransaction.create({
+          data: { userId, points, raison, source, sourceId },
+        });
+
+        await this.appliquerDelta(tx, userId, points);
+
+        return points;
+      });
+    } catch (error) {
+      if (isPrismaError(error, 'P2002')) {
+        // Fait deja credite : unlike puis re-like, quiz rejoue, retry reseau.
+        this.logger.debug(
+          `Points deja attribues pour ${source}:${sourceId} (membre ${userId})`,
+        );
+        return 0;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * `attribuer` en mode « au mieux » : journalise et rend la main plutot que de
+   * propager l'erreur.
+   *
+   * La gamification est un effet de bord de l'action du membre, pas sa raison
+   * d'etre : une base indisponible cote points ne doit pas faire echouer le
+   * depot d'un signalement ni la publication d'un commentaire, qui sont deja
+   * enregistres a ce stade. Les appelants passent tous par ici ; `attribuer`
+   * reste disponible telle quelle si un appelant veut traiter l'echec.
+   */
+  async attribuerSansEchouer(params: {
+    userId: string;
+    source: PointSource;
+    sourceId: string;
+    points: number;
+    raison: string;
+  }): Promise<number> {
+    try {
+      return await this.attribuer(params);
+    } catch (error) {
+      this.logger.error(
+        `Echec de l'attribution de points ${params.source}:${params.sourceId} pour le membre ${params.userId}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      return 0;
+    }
   }
 
   /**

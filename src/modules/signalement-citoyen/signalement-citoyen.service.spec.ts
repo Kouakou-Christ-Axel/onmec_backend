@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { SignalementCitoyenService } from './signalement-citoyen.service';
 import { PrismaService } from '../../database/services/prisma.service';
 import { EngagementService } from '../engagement/engagement.service';
+import { GamificationService } from '../gamification/gamification.service';
 
 describe('SignalementCitoyenService', () => {
   let service: SignalementCitoyenService;
@@ -17,6 +18,12 @@ describe('SignalementCitoyenService', () => {
     getEngagementStats: jest.fn().mockResolvedValue(new Map()),
   };
 
+  // Le service credite des points au depot et a la validation d'un
+  // signalement ; sans ce provider le module de test ne compile plus.
+  const gamificationMock = {
+    attribuerSansEchouer: jest.fn().mockResolvedValue(0),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
     const module: TestingModule = await Test.createTestingModule({
@@ -24,6 +31,7 @@ describe('SignalementCitoyenService', () => {
         SignalementCitoyenService,
         { provide: PrismaService, useValue: prismaMock },
         { provide: EngagementService, useValue: engagementMock },
+        { provide: GamificationService, useValue: gamificationMock },
       ],
     }).compile();
 

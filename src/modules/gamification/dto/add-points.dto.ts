@@ -1,16 +1,19 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsInt, IsNotEmpty, IsString, IsUUID } from 'class-validator';
 
 export class AddPointsDto {
-  @ApiPropertyOptional({
-    description:
-      "Identifiant du membre destinataire. Omis, les points vont au compte appelant.",
+  // Obligatoire depuis la separation admin/membre : l'endpoint etant reserve au
+  // back-office, l'appelant est toujours un admin, et son identifiant n'existe
+  // pas dans la table `members` que reference PointTransaction. L'ancien repli
+  // « omis, les points vont au compte appelant » ne pouvait donc plus produire
+  // qu'une violation de cle etrangere.
+  @ApiProperty({
+    description: 'Identifiant du membre destinataire.',
     example: 'u1b2c3d4-e5f6-7890-abcd-ef1234567890',
   })
-  @IsOptional()
   @IsUUID()
-  userId?: string;
+  userId: string;
 
   @ApiProperty({
     description: 'Nombre de points à attribuer (peut être positif).',

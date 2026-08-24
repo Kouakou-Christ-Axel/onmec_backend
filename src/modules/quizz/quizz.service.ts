@@ -4,9 +4,10 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '../../generated/prisma/client';
+import { PointSource, Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../database/services/prisma.service';
 import { GamificationService } from '../gamification/gamification.service';
+import { BAREME } from '../gamification/points-bareme';
 import { CreateQuizzDto } from './dto/create-quizz.dto';
 import { UpdateQuizzDto } from './dto/update-quizz.dto';
 import { SubmitAnswerDto } from './dto/submit-answer.dto';
@@ -16,8 +17,6 @@ import { CreateCategorieQuizDto, UpdateCategorieQuizDto } from './dto/create-cat
 @Injectable()
 export class QuizzService {
   private readonly logger = new Logger(QuizzService.name);
-  // Points attribués par bonne réponse à la complétion d'un quiz.
-  private static readonly POINTS_PAR_BONNE_REPONSE = 10;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -205,22 +204,18 @@ export class QuizzService {
     });
 
     // Attribution des points (gamification) côté serveur, source de vérité.
-    // En cas d'échec, on ne fait pas échouer la soumission : le résultat est
-    // déjà enregistré et le score reste valide.
-    const pointsGagnes = correctCount * QuizzService.POINTS_PAR_BONNE_REPONSE;
-    if (pointsGagnes > 0) {
-      try {
-        await this.gamification.ajouterPoints(userId, {
-          points: pointsGagnes,
-          raison: `quiz:${quiz.title}`,
-        });
-      } catch (error) {
-        this.logger.error(
-          `Échec de l'attribution des points pour le quiz ${quizId}`,
-          error instanceof Error ? error.stack : String(error),
-        );
-      }
-    }
+    //
+    // `sourceId` est le quiz, pas la tentative : seule la première complétion
+    // rapporte des points. Auparavant chaque soumission créditait à nouveau, et
+    // rejouer le même quiz en boucle suffisait à monter en niveau.
+    const pointsGagnes = await this.gamification.attribuerSansEchouer({
+      userId,
+      source: PointSource.QUIZ_TERMINE,
+      sourceId: quizId,
+      points:
+        BAREME.QUIZ_TERMINE + correctCount * BAREME.QUIZ_BONNE_REPONSE,
+      raison: `quiz:${quiz.title}`,
+    });
 
     return {
       userQuiz,

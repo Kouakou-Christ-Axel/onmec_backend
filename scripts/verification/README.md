@@ -21,6 +21,7 @@ diffère.
 ```bash
 python scripts/verification/verify-auth.py
 python scripts/verification/verify-actualites.py
+python scripts/verification/verify-engagement.py
 ```
 
 Code de sortie 0 si toutes les vérifications passent.
@@ -34,6 +35,12 @@ suspension effective sur un token déjà émis, cloisonnement des OTP entre
 vérification d'email et réinitialisation, rate limiting, politique de mot de
 passe, et uniformité des réponses d'échec de connexion (anti-énumération).
 
+**`verify-engagement.py`** — 15 vérifications : idempotence du toggle de
+like (aucune erreur serveur sur une rafale), attribution de points dérivée des
+actions réelles, non-refarmabilité (unliker puis reliker ne recrédite pas),
+plafond quotidien des commentaires, obligation du `userId` sur l'ajustement
+back-office, et refus de l'auto-attribution par un membre.
+
 **`verify-actualites.py`** — 37 vérifications : restriction de la rédaction aux
 rôles éditoriaux, invisibilité des brouillons pour le public *et* pour le
 module engagement, prévisualisation back-office, publication et dépublication,
@@ -46,3 +53,8 @@ Le rate limiting s'applique aussi à ces scripts. Deux exécutions rapprochées 
 `verify-auth.py` font échouer les vérifications qui consomment
 `/auth/forgot-password` (3 par quart d'heure) et `/auth/register` (3 par heure).
 Attendre la fenêtre entre deux exécutions complètes.
+
+`verify-engagement.py` est en revanche rejouable : le plafond quotidien étant
+justement ce qu'il vérifie, ses assertions portent sur le gain d'une rafale et
+non sur un total absolu, et restent donc valides sur un membre déjà crédité
+dans la journée.

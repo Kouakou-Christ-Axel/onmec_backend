@@ -6,8 +6,10 @@ import {PrismaService} from '../../database/services/prisma.service';
 import {promises as fs} from 'fs';
 import * as path from 'path';
 import {PaginatedResponse} from './dto/signalement-citoyen-dto/paginated-response.dto';
-import {StatutSignalement} from "../../generated/prisma/client";
+import {PointSource, StatutSignalement} from "../../generated/prisma/client";
 import {EngagementService} from '../engagement/engagement.service';
+import {GamificationService} from '../gamification/gamification.service';
+import {BAREME} from '../gamification/points-bareme';
 
 @Injectable()
 export class SignalementCitoyenService {
@@ -16,6 +18,7 @@ export class SignalementCitoyenService {
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly engagementService: EngagementService,
+		private readonly gamification: GamificationService,
 	) {
 	}
 
@@ -103,7 +106,7 @@ export class SignalementCitoyenService {
 				: null;
 
 			// Créer le signalement avec la photo
-			return await this.prisma.signalementCitoyen.create({
+			const signalement = await this.prisma.signalementCitoyen.create({
 				data: {
 					...createSignalementCitoyenDto,
 					statut: StatutSignalement.NOUVEAU,
@@ -120,6 +123,20 @@ export class SignalementCitoyenService {
 					},
 				},
 			});
+
+			// Un signalement peut être anonyme : pas de citoyen, donc personne à
+			// créditer.
+			if (signalement.citoyenId) {
+				await this.gamification.attribuerSansEchouer({
+					userId: signalement.citoyenId,
+					source: PointSource.SIGNALEMENT_DEPOSE,
+					sourceId: signalement.id,
+					points: BAREME.SIGNALEMENT_DEPOSE,
+					raison: 'signalement depose',
+				});
+			}
+
+			return signalement;
 		} catch (error) {
 			// Nettoyer les fichiers uploadés en cas d'erreur
 			if (files && files.length > 0) {
@@ -372,7 +389,7 @@ export class SignalementCitoyenService {
 				}
 			}
 
-			return await this.prisma.signalementCitoyen.update({
+			const misAJour = await this.prisma.signalementCitoyen.update({
 				where: {id},
 				data: {
 					...updateSignalementCitoyenDto,
@@ -389,6 +406,22 @@ export class SignalementCitoyenService {
 					},
 				},
 			});
+
+			// Bonus de validation : verse au passage de `validation` a vrai, et
+			// une seule fois. Le sourceId etant le signalement, devalider puis
+			// revalider ne recredite pas.
+			const vientDEtreValide = !signalement.validation && misAJour.validation;
+			if (vientDEtreValide && misAJour.citoyenId) {
+				await this.gamification.attribuerSansEchouer({
+					userId: misAJour.citoyenId,
+					source: PointSource.SIGNALEMENT_VALIDE,
+					sourceId: misAJour.id,
+					points: BAREME.SIGNALEMENT_VALIDE,
+					raison: 'signalement valide',
+				});
+			}
+
+			return misAJour;
 		} catch (error) {
 			// Nettoyer les fichiers uploadés en cas d'erreur
 			if (files && files.length > 0) {

@@ -64,9 +64,8 @@ export class GamificationController {
   @ApiOkResponse({ description: 'État de gamification mis à jour', type: GamificationStateDto })
   @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Non authentifié' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Réservé au back-office' })
-  addPoints(@Body() dto: AddPointsDto, @Req() req: Request) {
-    const user = req.user as AuthenticatedActor;
-    return this.gamificationService.ajouterPoints(dto.userId ?? user.id, dto);
+  addPoints(@Body() dto: AddPointsDto) {
+    return this.gamificationService.ajouterPoints(dto.userId, dto);
   }
 
   @Get('leaderboard')

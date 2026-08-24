@@ -387,7 +387,29 @@ model UserGamification {
   @@map("user_gamification")
 }
 
+// Origine d'une attribution de points. `AJUSTEMENT_MANUEL` couvre les
+// attributions faites depuis le back-office, seules a ne pas etre derivees
+// d'une action du membre.
+enum PointSource {
+  SIGNALEMENT_DEPOSE
+  SIGNALEMENT_VALIDE
+  QUIZ_TERMINE
+  COMMENTAIRE
+  LIKE
+  AJUSTEMENT_MANUEL
+}
+
 // Historique des attributions de points (journal des transactions).
+//
+// Le couple (source, sourceId) est la cle d'idempotence : il identifie le fait
+// qui a declenche l'attribution (le signalement depose, le quiz termine, le
+// commentaire ecrit, la cible likee). L'unicite sur (userId, source, sourceId)
+// est ce qui empeche de refarmer les memes points -- sans elle, unliker puis
+// reliker, ou rejouer un quiz, rapportait indefiniment.
+//
+// `sourceId` est nul pour les ajustements manuels : Postgres considerant les
+// NULL comme distincts, l'unicite ne les contraint pas, et le back-office peut
+// crediter ou debiter un membre autant de fois que necessaire.
 model PointTransaction {
   id String @id @default(uuid()) @db.Uuid
 
@@ -397,8 +419,14 @@ model PointTransaction {
   points Int
   raison String
 
+  source   PointSource @default(AJUSTEMENT_MANUEL)
+  sourceId String?     @db.Uuid
+
   createdAt DateTime @default(now())
 
+  @@unique([userId, source, sourceId])
   @@index([userId])
+  // Sert le calcul du plafond quotidien (somme des points du jour par source).
+  @@index([userId, source, createdAt])
   @@map("point_transactions")
 }
