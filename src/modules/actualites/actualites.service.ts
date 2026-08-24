@@ -80,8 +80,10 @@ export class ActualitesService {
    * `websearch_to_tsquery`, lequel accepte une saisie libre sans jamais lever
    * d'erreur de syntaxe — ce qui rend tout assainissement prealable inutile.
    *
-   * La liste est bornee : au-dela, l'utilisateur doit affiner sa recherche
-   * plutot que de faire transiter un IN gigantesque.
+   * La liste est bornee a SEARCH_ID_LIMIT : au-dela, l'utilisateur doit
+   * affiner sa recherche plutot que de faire transiter un IN gigantesque.
+   * La troncature est journalisee, car elle rend `meta.total` approximatif
+   * et vide les pages profondes — elle ne doit pas passer inapercue.
    */
   private async searchMatchingIds(raw: string): Promise<string[]> {
     const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
@@ -93,6 +95,13 @@ export class ActualitesService {
              ) @@ websearch_to_tsquery('french', ${raw})
        LIMIT ${SEARCH_ID_LIMIT}
     `;
+    if (rows.length === SEARCH_ID_LIMIT) {
+      this.logger.warn(
+        `Recherche « ${raw} » tronquee a ${SEARCH_ID_LIMIT} resultats : ` +
+          'le total et les pages profondes sont incomplets.',
+      );
+    }
+
     return rows.map((r) => r.id);
   }
 

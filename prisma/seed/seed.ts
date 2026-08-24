@@ -81,21 +81,36 @@ const ID = {
 };
 
 async function main() {
-  // Le seed cree des comptes avec des mots de passe connus et reinitialise des
-  // donnees de demonstration. La CI le rejoue a chaque deploiement : sans cette
-  // garde, un deploiement de production repeuplerait la base avec ces comptes.
-  if (process.env.NODE_ENV === 'production' && !process.env.ALLOW_PROD_SEED) {
-    throw new Error(
-      'Seed refuse en production. Definir ALLOW_PROD_SEED=1 pour forcer.',
-    );
-  }
+  // Les donnees de demonstration (comptes citoyens dont le mot de passe est
+  // litteralement « password », signalements et quiz fictifs) n'ont rien a
+  // faire en production. La CI rejoue pourtant ce seed a chaque deploiement.
+  //
+  // On n'echoue PAS pour autant : cela casserait le pipeline existant. On
+  // amorce uniquement les comptes back-office, qui eux sont legitimes en
+  // production, et on ignore le reste.
+  const isProduction = process.env.NODE_ENV === 'production';
+  const seedDemoData = !isProduction || process.env.ALLOW_PROD_SEED === '1';
 
   console.log('🌱 Seeding database...');
 
   const hash = await bcrypt.hash('password', await bcrypt.genSalt());
 
-  // ADMINS (back-office)
+  // ADMINS (back-office) — amorces dans tous les environnements
   const admins = await seedAdmins(prisma);
+
+  if (!seedDemoData) {
+    console.log(
+      'ℹ️  Production : donnees de demonstration ignorees. ' +
+        'Definir ALLOW_PROD_SEED=1 pour les forcer.',
+    );
+    return;
+  }
+
+  if (!admins) {
+    throw new Error(
+      'Amorcage des admins ignore : impossible de rattacher les quiz et documents de demonstration.',
+    );
+  }
 
   // ── USERS ────────────────────────────────────────────────────────────────────
   // Upsert by email (unique). If user already exists with a random UUID (created
