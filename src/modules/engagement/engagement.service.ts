@@ -5,6 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
+import { Prisma } from '../../generated/prisma/client';
+import { isPrismaError } from '../../common/utils/prisma-error';
 import { PrismaService } from '../../database/services/prisma.service';
 import { CreateCommentaireDto } from './dto/create-commentaire.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
@@ -64,8 +66,36 @@ export class EngagementService {
   }
 
   /**
-   * Active ou désactive le like d'un utilisateur sur une cible (idempotent grâce à
-   * la contrainte d'unicité userId + cible).
+   * Clé unique composée ciblant la réaction d'un membre sur un contenu donné.
+   * Adossée aux contraintes `@@unique([userId, signalementId])` et
+   * `@@unique([userId, actualiteId])` du modèle Reaction.
+   */
+  private reactionKey(
+    target: EngagementTarget,
+    targetId: string,
+    userId: string,
+  ): Prisma.ReactionWhereUniqueInput {
+    return target === 'signalement'
+      ? { userId_signalementId: { userId, signalementId: targetId } }
+      : { userId_actualiteId: { userId, actualiteId: targetId } };
+  }
+
+  /**
+   * Active ou désactive le like d'un utilisateur sur une cible.
+   *
+   * La version précédente lisait la réaction puis créait ou supprimait selon le
+   * résultat : deux requêtes concurrentes du même membre (double tap, retry
+   * réseau) passaient toutes deux par la branche « pas de réaction » et l'une
+   * des deux échouait en 500 sur la contrainte d'unicité.
+   *
+   * On attaque donc directement la base par la clé unique et on se laisse
+   * guider par le résultat : la suppression fait autorité si elle touche une
+   * ligne (P2025 = il n'y en avait pas), et une création concurrente (P2002)
+   * signifie que quelqu'un d'autre a déjà posé le like — état final identique,
+   * donc succès.
+   *
+   * `likesCount` reste une lecture postérieure : elle reflète l'état de la
+   * table au moment du comptage, pas un instantané transactionnel du toggle.
    */
   async toggleReaction(
     target: EngagementTarget,
@@ -74,16 +104,24 @@ export class EngagementService {
   ): Promise<ReactionToggleResponseDto> {
     await this.ensureTargetExists(target, targetId);
 
-    const where = { userId, ...this.targetWhere(target, targetId) };
-
-    const existing = await this.prisma.reaction.findFirst({ where });
+    const key = this.reactionKey(target, targetId, userId);
 
     let liked: boolean;
-    if (existing) {
-      await this.prisma.reaction.delete({ where: { id: existing.id } });
+    try {
+      await this.prisma.reaction.delete({ where: key });
       liked = false;
-    } else {
-      await this.prisma.reaction.create({ data: where });
+    } catch (error) {
+      if (!isPrismaError(error, 'P2025')) throw error;
+
+      // Aucune réaction à supprimer : on pose le like.
+      try {
+        await this.prisma.reaction.create({
+          data: { userId, ...this.targetWhere(target, targetId) },
+        });
+      } catch (createError) {
+        if (!isPrismaError(createError, 'P2002')) throw createError;
+        // Course concurrente : le like a été posé entre-temps. Rien à faire.
+      }
       liked = true;
     }
 

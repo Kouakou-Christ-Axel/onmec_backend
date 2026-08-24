@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../database/services/prisma.service';
 import { AddPointsDto } from './dto/add-points.dto';
 import { LeaderboardQueryDto } from './dto/leaderboard-query.dto';
@@ -8,16 +9,23 @@ import {
   LeaderboardEntryDto,
 } from './dto/gamification-response.dto';
 
+/**
+ * Règle de niveau SIMPLE : un nouveau niveau tous les 100 points, à partir du
+ * niveau 1 (0 à 99 points => niveau 1).
+ *
+ * Constante partagée par le calcul TypeScript et l'instruction SQL de
+ * `appliquerDelta` : les deux doivent impérativement rester d'accord, sans quoi
+ * le niveau retourné par une attribution différerait de celui recalculé
+ * ailleurs.
+ */
+export const POINTS_PAR_NIVEAU = 100;
+
 @Injectable()
 export class GamificationService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * Règle de niveau SIMPLE : un nouveau niveau tous les 100 points.
-   * Le niveau commence à 1 (0 à 99 points => niveau 1).
-   */
   private calculerNiveau(points: number): number {
-    return 1 + Math.floor(points / 100);
+    return 1 + Math.floor(Math.max(points, 0) / POINTS_PAR_NIVEAU);
   }
 
   /**
@@ -68,29 +76,63 @@ export class GamificationService {
   }
 
   /**
+   * Applique un delta de points en une seule instruction SQL et retourne le
+   * nouvel état.
+   *
+   * La version précédente lisait `points`, calculait le total en JavaScript
+   * puis l'écrivait : deux attributions concurrentes lisaient la même valeur de
+   * départ et la seconde écrasait la première (mise à jour perdue). Le cas
+   * n'avait rien de théorique — les points sont désormais attribués depuis
+   * plusieurs modules, et un même membre peut liker et commenter dans la même
+   * seconde.
+   *
+   * `ON CONFLICT DO UPDATE` avec `points = points + delta` fait faire l'addition
+   * à Postgres sur la ligne verrouillée, et le niveau est dérivé du total ainsi
+   * obtenu dans la même instruction : les deux ne peuvent plus diverger.
+   *
+   * Le `GREATEST(..., 0)` borne le niveau à 1 si un ajustement négatif du
+   * back-office fait passer le total sous zéro ; la division entière de
+   * Postgres tronque vers zéro et donnerait sinon un niveau incohérent.
+   */
+  private async appliquerDelta(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    delta: number,
+  ): Promise<{ points: number; niveau: number; updatedAt: Date }> {
+    const [etat] = await tx.$queryRaw<
+      Array<{ points: number; niveau: number; updatedAt: Date }>
+    >`
+      INSERT INTO user_gamification ("userId", points, niveau, "updatedAt")
+      VALUES (
+        ${userId}::uuid,
+        ${delta},
+        1 + FLOOR(GREATEST(${delta}, 0)::numeric / ${POINTS_PAR_NIVEAU})::int
+      , now())
+      ON CONFLICT ("userId") DO UPDATE
+        SET points = user_gamification.points + EXCLUDED.points,
+            niveau = 1 + FLOOR(
+              GREATEST(user_gamification.points + EXCLUDED.points, 0)::numeric
+              / ${POINTS_PAR_NIVEAU}
+            )::int,
+            "updatedAt" = now()
+      RETURNING points, niveau, "updatedAt"
+    `;
+
+    return etat;
+  }
+
+  /**
    * Ajoute des points à l'utilisateur, journalise la transaction et recalcule
    * le niveau, puis retourne l'état mis à jour.
    */
   async ajouterPoints(userId: string, dto: AddPointsDto): Promise<GamificationStateDto> {
-    // Récupère l'état courant (ou le crée) pour calculer le nouveau total.
-    const etatCourant = await this.prisma.userGamification.upsert({
-      where: { userId },
-      create: { userId, points: 0, niveau: 1 },
-      update: {},
-    });
-
-    const nouveauTotal = etatCourant.points + dto.points;
-    const nouveauNiveau = this.calculerNiveau(nouveauTotal);
-
-    const [etat] = await this.prisma.$transaction([
-      this.prisma.userGamification.update({
-        where: { userId },
-        data: { points: nouveauTotal, niveau: nouveauNiveau },
-      }),
-      this.prisma.pointTransaction.create({
+    const etat = await this.prisma.$transaction(async (tx) => {
+      await tx.pointTransaction.create({
         data: { userId, points: dto.points, raison: dto.raison },
-      }),
-    ]);
+      });
+
+      return this.appliquerDelta(tx, userId, dto.points);
+    });
 
     return this.formaterEtat(etat.points, etat.niveau, etat.updatedAt);
   }
