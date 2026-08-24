@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import { GenerateDataService } from "./generate-data.service";
@@ -7,6 +7,24 @@ import * as fs from 'fs';
 
 @Injectable()
 export class GenerateConfigService {
+    /**
+     * Taille maximale d'une image televersee.
+     * Multer n'imposait aucune limite : un seul appel pouvait remplir le disque.
+     */
+    static readonly MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+    /**
+     * Extensions acceptees.
+     *
+     * `svg` a ete retire : un SVG est un document XML pouvant embarquer du
+     * script, et les fichiers sont servis en statique depuis /uploads sur le
+     * meme domaine — c'est un XSS stocke.
+     *
+     * Ce filtre porte sur le NOM du fichier. La verification du type reel
+     * (magic number) reste a brancher via UploadValidationPipe.
+     */
+    static readonly ALLOWED_IMAGE_EXT = /\.(jpg|jpeg|png|gif|webp|heic|heif)$/i;
+
     static generateConfigSingleImageUpload(destination: string, name?: string) {
         const imageConfig = {
             storage: diskStorage({
@@ -18,11 +36,17 @@ export class GenerateConfigService {
                     cb(null, filename);
                 },
             }),
+            limits: { fileSize: GenerateConfigService.MAX_IMAGE_BYTES, files: 1 },
             fileFilter: (req, file, cb) => {
                 // Insensible à la casse + formats iOS (heic/heif) pour éviter
                 // les rejets d'images valides (ex: IMG_1234.JPG, photo.HEIC).
-                if (!file.originalname.match(/\.(jpg|jpeg|png|gif|webp|svg|heic|heif)$/i)) {
-                    return cb(new Error('Seul les fichiers image sont acceptés'), false);
+                if (!file.originalname.match(GenerateConfigService.ALLOWED_IMAGE_EXT)) {
+                    return cb(
+                        new BadRequestException(
+                            'Seuls les fichiers image sont acceptés (jpg, jpeg, png, gif, webp, heic, heif)',
+                        ),
+                        false,
+                    );
                 }
                 cb(null, true);
             },
@@ -41,10 +65,16 @@ export class GenerateConfigService {
                     cb(null, filename);
                 },
             }),
+            limits: { fileSize: GenerateConfigService.MAX_IMAGE_BYTES },
             fileFilter: (req, file, cb) => {
                 // Insensible à la casse + formats iOS (heic/heif).
-                if (!file.originalname.match(/\.(jpg|jpeg|png|gif|webp|svg|heic|heif)$/i)) {
-                    return cb(new Error('Seuls les fichiers image sont acceptés'), false);
+                if (!file.originalname.match(GenerateConfigService.ALLOWED_IMAGE_EXT)) {
+                    return cb(
+                        new BadRequestException(
+                            'Seuls les fichiers image sont acceptés (jpg, jpeg, png, gif, webp, heic, heif)',
+                        ),
+                        false,
+                    );
                 }
                 cb(null, true);
             }

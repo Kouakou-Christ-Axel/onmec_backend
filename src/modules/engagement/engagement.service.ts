@@ -49,8 +49,12 @@ export class EngagementService {
         throw new NotFoundException(`Signalement avec l'id ${targetId} introuvable`);
       }
     } else {
-      const exists = await this.prisma.actualite.findUnique({
-        where: { id: targetId },
+      // Point d'entree distinct de ActualitesService : ce controleur partage le
+      // chemin `actualites` et expose GET :id/commentaires publiquement. Sans
+      // ce filtre, un brouillon reste likeable et ses commentaires lisibles
+      // par quiconque connait son identifiant.
+      const exists = await this.prisma.actualite.findFirst({
+        where: { id: targetId, deletedAt: null, statut: 'PUBLIEE' },
         select: { id: true },
       });
       if (!exists) {

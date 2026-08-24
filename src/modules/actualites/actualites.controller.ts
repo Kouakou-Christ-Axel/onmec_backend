@@ -8,22 +8,21 @@ import {
   Patch,
   Post,
   Query,
-  Req,
   UploadedFile,
   UseGuards,
-  UseInterceptors
+  UseInterceptors,
 } from '@nestjs/common';
-import {Request} from 'express';
 import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
-import {ActualitesService} from './actualites.service';
-import {CreateActualiteDto} from './dto/create-actualite.dto';
-import {UpdateActualiteDto} from './dto/update-actualite.dto';
-import {FileInterceptor} from "@nestjs/platform-express";
-import {GenerateConfigService} from '../../common/services/generate-config.service';
+import { ActualitesService } from './actualites.service';
+import { CreateActualiteDto } from './dto/create-actualite.dto';
+import { UpdateActualiteDto } from './dto/update-actualite.dto';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { GenerateConfigService } from '../../common/services/generate-config.service';
 import {
   ApiBearerAuth,
   ApiBody,
   ApiConsumes,
+  ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -32,109 +31,216 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import {ActualitesSearchDto} from './dto/actualites-search.dto';
-import {JwtAuthGuard} from "../auth/guards/jwt-auth.guard";
-import {OptionalJwtAuthGuard} from "../auth/guards/optional-jwt-auth.guard";
-import {ActualiteResponseDto} from './dto/actualite-response.dto';
+import { ActualitesSearchDto } from './dto/actualites-search.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
+import { AdminGuard } from '../auth/guards/admin.guard';
+import { AdminRolesGuard } from '../auth/guards/admin-roles.guard';
+import { AdminRoles } from '../auth/decorators/admin-roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { AdminRole } from '../../generated/prisma/client';
+import { ActualiteResponseDto } from './dto/actualite-response.dto';
 
+const IMAGE_UPLOAD = GenerateConfigService.generateConfigSingleImageUpload(
+  './uploads/actualites',
+);
+
+/** Rôles éditoriaux : rédaction et publication des actualités. */
+const EDITORIAL = [AdminRole.ADMIN_NATIONAL, AdminRole.CHARGE_COMMUNICATION];
+
+/**
+ * Actualités.
+ *
+ * Les écritures étaient protégées par `JwtAuthGuard` seul : tout membre
+ * connecté pouvait créer, modifier et supprimer définitivement n'importe quelle
+ * actualité — et la suppression cascadait sur les likes et les commentaires.
+ */
 @ApiTags('Actualités')
 @Controller('actualites')
 export class ActualitesController {
   constructor(private readonly actualitesService: ActualitesService) {}
 
+  /**
+   * Compresse l'image televersee sur place.
+   *
+   * Les images d'actualites etaient stockees a leur taille d'origine, alors
+   * que le module users compressait deja les siennes. `deleteOriginal: true`
+   * sans `outputDir` reecrit le fichier au meme chemin, donc `image.filename`
+   * reste valide pour construire l'URL.
+   */
+  private async compressInPlace(image?: Express.Multer.File) {
+    if (!image?.path) return;
+    await GenerateConfigService.compressImages(
+      { img_1: image.path },
+      undefined,
+      { quality: 75, width: 1600, fit: 'inside' },
+      true,
+    );
+  }
+
+  // ── RÉDACTION ────────────────────────────────────────────────────────────
+
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
+  @AdminRoles(...EDITORIAL)
   @ApiBearerAuth('JWT')
-  @ApiOperation({ summary: 'Créer une actualité', description: 'Publie une nouvelle actualité avec image optionnelle.' })
+  @ApiOperation({
+    summary: 'Créer une actualité',
+    description:
+      "Crée une actualité en BROUILLON. L'auteur est déduit du token, jamais du corps de requête. Publication par PATCH /actualites/:id/publier.",
+  })
   @ApiConsumes('multipart/form-data')
   @ApiBody({ type: CreateActualiteDto })
-  @ApiResponse({ status: HttpStatus.CREATED, description: 'Actualité créée', type: ActualiteResponseDto })
-  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
-  @UseInterceptors(
-    FileInterceptor(
-      'image',
-      GenerateConfigService.generateConfigSingleImageUpload('./uploads/actualites')
-    )
-  )
-  create(
-    @Body() createActualiteDto: CreateActualiteDto,
-    @UploadedFile() image?: Express.Multer.File
-  ) {
-    return this.actualitesService.create(createActualiteDto, image);
-  }
-
-  @Get()
-  @ApiOperation({ summary: 'Liste des actualités', description: 'Retourne les actualités avec pagination et filtres optionnels.' })
-  @ApiOkResponse({
-    description: 'Liste paginée des actualités',
-    schema: {
-      allOf: [
-        { $ref: '#/components/schemas/PaginatedResponseDto' },
-        { properties: { data: { type: 'array', items: { $ref: '#/components/schemas/ActualiteResponseDto' } } } },
-      ],
-    },
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: 'Actualité créée',
+    type: ActualiteResponseDto,
   })
-  @UseGuards(OptionalJwtAuthGuard)
-  findAll(@Query() query: ActualitesSearchDto, @Req() req: Request) {
-    const user = req.user as AuthenticatedActor | undefined;
-    return this.actualitesService.findAll(query, user?.id);
-  }
-
-  @Get('slug/:slug')
-  @ApiOperation({ summary: 'Trouver par slug' })
-  @ApiParam({ name: 'slug', description: 'Slug unique de l\'actualité', example: 'inauguration-du-nouveau-pont' })
-  @ApiOkResponse({ description: 'Actualité trouvée', type: ActualiteResponseDto })
-  @ApiNotFoundResponse({ description: 'Actualité non trouvée' })
-  @UseGuards(OptionalJwtAuthGuard)
-  findBySlug(@Param('slug') slug: string, @Req() req: Request) {
-    const user = req.user as AuthenticatedActor | undefined;
-    return this.actualitesService.findBySlug(slug, user?.id);
-  }
-
-  @Get(':id')
-  @ApiOperation({ summary: 'Trouver par ID' })
-  @ApiParam({ name: 'id', description: 'Identifiant de l\'actualité', example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' })
-  @ApiOkResponse({ description: 'Actualité trouvée', type: ActualiteResponseDto })
-  @ApiNotFoundResponse({ description: 'Actualité non trouvée' })
-  @UseGuards(OptionalJwtAuthGuard)
-  findOne(@Param('id') id: string, @Req() req: Request) {
-    const user = req.user as AuthenticatedActor | undefined;
-    return this.actualitesService.findOne(id, user?.id);
+  @ApiForbiddenResponse({ description: 'Rôle éditorial requis' })
+  @UseInterceptors(FileInterceptor('image', IMAGE_UPLOAD))
+  async create(
+    @Body() createActualiteDto: CreateActualiteDto,
+    @CurrentUser() actor: AuthenticatedActor,
+    @UploadedFile() image?: Express.Multer.File,
+  ) {
+    await this.compressInPlace(image);
+    return this.actualitesService.create(createActualiteDto, actor, image);
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
+  @AdminRoles(...EDITORIAL)
   @ApiBearerAuth('JWT')
   @ApiOperation({ summary: 'Modifier une actualité' })
-  @ApiParam({ name: 'id', description: 'Identifiant de l\'actualité', example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' })
+  @ApiParam({ name: 'id', description: "Identifiant de l'actualité" })
   @ApiConsumes('multipart/form-data')
   @ApiBody({ type: UpdateActualiteDto })
   @ApiOkResponse({ description: 'Actualité mise à jour', type: ActualiteResponseDto })
   @ApiNotFoundResponse({ description: 'Actualité non trouvée' })
-  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
-  @UseInterceptors(
-    FileInterceptor(
-      'image',
-      GenerateConfigService.generateConfigSingleImageUpload('./uploads/actualites')
-    )
-  )
-  update(
+  @UseInterceptors(FileInterceptor('image', IMAGE_UPLOAD))
+  async update(
     @Param('id') id: string,
     @Body() updateActualiteDto: UpdateActualiteDto,
-    @UploadedFile() image?: Express.Multer.File
+    @UploadedFile() image?: Express.Multer.File,
   ) {
+    await this.compressInPlace(image);
     return this.actualitesService.update(id, updateActualiteDto, image);
   }
 
-  @Delete(':id')
-  @UseGuards(JwtAuthGuard)
+  @Patch(':id/publier')
+  @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
+  @AdminRoles(...EDITORIAL)
   @ApiBearerAuth('JWT')
-  @ApiOperation({ summary: 'Supprimer une actualité' })
-  @ApiParam({ name: 'id', description: 'Identifiant de l\'actualité', example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' })
-  @ApiOkResponse({ description: 'Actualité supprimée' })
+  @ApiOperation({
+    summary: 'Publier une actualité',
+    description: 'Rend l’actualité visible publiquement.',
+  })
+  @ApiParam({ name: 'id', description: "Identifiant de l'actualité" })
+  @ApiOkResponse({ description: 'Actualité publiée', type: ActualiteResponseDto })
   @ApiNotFoundResponse({ description: 'Actualité non trouvée' })
-  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
+  publier(@Param('id') id: string) {
+    return this.actualitesService.publier(id);
+  }
+
+  @Patch(':id/depublier')
+  @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
+  @AdminRoles(...EDITORIAL)
+  @ApiBearerAuth('JWT')
+  @ApiOperation({
+    summary: 'Dépublier une actualité',
+    description: 'Repasse l’actualité en brouillon, sans perdre son contenu.',
+  })
+  @ApiParam({ name: 'id', description: "Identifiant de l'actualité" })
+  @ApiOkResponse({ description: 'Actualité dépubliée', type: ActualiteResponseDto })
+  depublier(@Param('id') id: string) {
+    return this.actualitesService.depublier(id);
+  }
+
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
+  @AdminRoles(...EDITORIAL)
+  @ApiBearerAuth('JWT')
+  @ApiOperation({
+    summary: 'Supprimer une actualité',
+    description:
+      'Suppression réversible : les likes et commentaires sont conservés. Restauration via POST /actualites/:id/restore.',
+  })
+  @ApiParam({ name: 'id', description: "Identifiant de l'actualité" })
+  @ApiOkResponse({ description: 'Actualité supprimée', type: ActualiteResponseDto })
+  @ApiNotFoundResponse({ description: 'Actualité non trouvée' })
   remove(@Param('id') id: string) {
     return this.actualitesService.remove(id);
+  }
+
+  @Post(':id/restore')
+  @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
+  @AdminRoles(AdminRole.ADMIN_NATIONAL)
+  @ApiBearerAuth('JWT')
+  @ApiOperation({ summary: 'Restaurer une actualité supprimée' })
+  @ApiParam({ name: 'id', description: "Identifiant de l'actualité" })
+  @ApiOkResponse({ description: 'Actualité restaurée', type: ActualiteResponseDto })
+  restore(@Param('id') id: string) {
+    return this.actualitesService.restore(id);
+  }
+
+  // ── BACK-OFFICE ──────────────────────────────────────────────────────────
+  // Déclaré AVANT `:id`, sinon « admin » serait capté comme un identifiant.
+
+  @Get('admin')
+  @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
+  @AdminRoles(...EDITORIAL)
+  @ApiBearerAuth('JWT')
+  @ApiOperation({
+    summary: 'Liste back-office des actualités',
+    description:
+      'Retourne tous les statuts, brouillons compris, avec filtre `statut` optionnel.',
+  })
+  @ApiOkResponse({ description: 'Liste paginée' })
+  findAllAdmin(
+    @Query() query: ActualitesSearchDto,
+    @CurrentUser() actor: AuthenticatedActor,
+  ) {
+    return this.actualitesService.findAll(query, actor, query.statut);
+  }
+
+  // ── LECTURE PUBLIQUE ─────────────────────────────────────────────────────
+
+  @Get()
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({
+    summary: 'Liste des actualités publiées',
+    description:
+      'Visiteurs et membres ne voient que les actualités publiées. Les rôles éditoriaux voient aussi les brouillons.',
+  })
+  @ApiOkResponse({ description: 'Liste paginée des actualités' })
+  findAll(
+    @Query() query: ActualitesSearchDto,
+    @CurrentUser() actor?: AuthenticatedActor,
+  ) {
+    return this.actualitesService.findAll(query, actor);
+  }
+
+  @Get('slug/:slug')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({ summary: 'Trouver par slug' })
+  @ApiParam({ name: 'slug', description: "Slug unique de l'actualité" })
+  @ApiOkResponse({ description: 'Actualité trouvée', type: ActualiteResponseDto })
+  @ApiNotFoundResponse({ description: 'Actualité non trouvée' })
+  findBySlug(
+    @Param('slug') slug: string,
+    @CurrentUser() actor?: AuthenticatedActor,
+  ) {
+    return this.actualitesService.findBySlug(slug, actor);
+  }
+
+  @Get(':id')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({ summary: 'Trouver par identifiant' })
+  @ApiParam({ name: 'id', description: "Identifiant de l'actualité" })
+  @ApiOkResponse({ description: 'Actualité trouvée', type: ActualiteResponseDto })
+  @ApiNotFoundResponse({ description: 'Actualité non trouvée ou non publiée' })
+  @ApiUnauthorizedResponse({ description: 'Token invalide' })
+  findOne(@Param('id') id: string, @CurrentUser() actor?: AuthenticatedActor) {
+    return this.actualitesService.findOne(id, actor);
   }
 }

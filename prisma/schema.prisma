@@ -301,9 +301,11 @@ model Actualite {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Workflow éditorial. Le défaut bascule sur BROUILLON en phase C ; il reste
-  // PUBLIEE en phase A pour ne pas dépublier l'existant à la migration.
-  statut      StatutActualite @default(PUBLIEE)
+  // Workflow éditorial : une actualité naît en brouillon et est publiée par
+  // une action explicite. La migration de séparation posait PUBLIEE par défaut
+  // pour ne pas dépublier l'existant ; le défaut a basculé une fois la colonne
+  // remplie.
+  statut      StatutActualite @default(BROUILLON)
   publishedAt DateTime?
   deletedAt   DateTime?
 
