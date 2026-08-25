@@ -11,6 +11,25 @@ jobs:
     name: CI
     runs-on: ubuntu-latest
 
+    # Base jetable pour le contrôle de dérive : `migrate diff --from-migrations`
+    # rejoue tout l'historique des migrations dans une base fantôme, il lui en
+    # faut donc une. Aucune autre étape n'en dépend — les tests unitaires ont
+    # toutes leurs dépendances mockées.
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: shadow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -59,16 +78,30 @@ jobs:
       # `migrate deploy` du job suivant, une fois sur le VPS.
       - name: Migration drift check
         run: |
+          set -o pipefail
+          # `set -e` interromprait le script avant le diagnostic : on capture
+          # le code de sortie pour distinguer « la commande a échoué » de
+          # « le schéma diverge ». Confondre les deux avait produit un message
+          # trompeur au premier passage, annonçant une dérive là où il
+          # manquait seulement la base fantôme.
+          set +e
           DIFF=$(pnpm exec prisma migrate diff \
             --from-migrations prisma/migrations \
-            --to-schema prisma/schema.prisma --script)
+            --to-schema prisma/schema.prisma --script 2>&1)
+          CODE=$?
+          set -e
           echo "$DIFF"
+          if [ $CODE -ne 0 ]; then
+            echo "::error::Le contrôle de dérive n'a pas pu s'exécuter (code $CODE)."
+            exit 1
+          fi
           if ! echo "$DIFF" | grep -q "This is an empty migration"; then
             echo "::error::Le schéma Prisma diverge des migrations."
             exit 1
           fi
         env:
           DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
+          SHADOW_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/shadow?schema=public
 
       - name: Build
         run: pnpm build
