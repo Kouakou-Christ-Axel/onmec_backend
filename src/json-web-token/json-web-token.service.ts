@@ -19,8 +19,10 @@ export class JsonWebTokenService {
       this.configService.getOrThrow<string>('REFRESH_TOKEN_SECRET');
 
     // `getOrThrow` et non `get(...) ?? ''` : une chaine vide passee a
-    // `expiresIn` produit un token SANS expiration. Mieux vaut refuser de
-    // demarrer que d'emettre des JWT eternels.
+    // `expiresIn` produit un token SANS expiration. Ces deux variables ont
+    // desormais un defaut (15m / 7d, voir src/config/env.validation.ts) : le
+    // `getOrThrow` ne sert plus a exiger le `.env`, il verifie que la couche
+    // de defauts a bien tourne. Ne pas le rabaisser en `get(...) ?? ...`.
     this.tokenExpiration =
       this.configService.getOrThrow<string>('TOKEN_EXPIRATION');
     this.refreshExpiration = this.configService.getOrThrow<string>(

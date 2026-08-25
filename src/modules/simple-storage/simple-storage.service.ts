@@ -1,5 +1,9 @@
 // typescript
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { createReadStream, unlinkSync } from 'fs';
@@ -13,20 +17,51 @@ import {
 @Injectable()
 export class SimpleStorageService implements ISimpleStorageService {
   private readonly logger = new Logger(SimpleStorageService.name);
-  s3Client: S3Client;
+  s3Client: S3Client | null;
   bucketName: string;
+
+  /**
+   * Configuration S3 facultative.
+   *
+   * Aucun module ne consomme ce service : les fichiers sont ecrits sur le
+   * disque local. Les quatre `getOrThrow` du constructeur faisaient pourtant
+   * echouer le demarrage de TOUTE l'application quand les variables AWS
+   * manquaient — un stockage inutilise empechait l'API de repondre.
+   *
+   * Sans configuration complete, le service se declare inactif et n'echoue
+   * qu'a l'appel, la ou l'absence de S3 est reellement un probleme.
+   */
   constructor(configService: ConfigService) {
-    this.logger.log('Initializing SimpleStorageService');
-    this.bucketName = configService.getOrThrow<string>('AWS_S3_BUCKET_NAME');
+    const bucket = configService.get<string>('AWS_S3_BUCKET_NAME');
+    const region = configService.get<string>('AWS_REGION');
+    const accessKeyId = configService.get<string>('AWS_ACCESS_KEY_ID');
+    const secretAccessKey = configService.get<string>('AWS_SECRET_ACCESS_KEY');
+
+    if (!bucket || !region || !accessKeyId || !secretAccessKey) {
+      this.logger.warn(
+        'Configuration AWS incomplete : stockage S3 desactive (les fichiers restent sur le disque local).',
+      );
+      this.bucketName = '';
+      this.s3Client = null;
+      return;
+    }
+
+    this.bucketName = bucket;
     this.s3Client = new S3Client({
-      region: configService.getOrThrow<string>('AWS_REGION'),
-      credentials: {
-        accessKeyId: configService.getOrThrow<string>('AWS_ACCESS_KEY_ID'),
-        secretAccessKey: configService.getOrThrow<string>(
-          'AWS_SECRET_ACCESS_KEY',
-        ),
-      },
+      region,
+      credentials: { accessKeyId, secretAccessKey },
     });
+    this.logger.log(`Stockage S3 configure (bucket ${bucket}, region ${region})`);
+  }
+
+  private client(): S3Client {
+    if (!this.s3Client) {
+      throw new ServiceUnavailableException(
+        'Stockage S3 non configure : definir AWS_REGION, AWS_ACCESS_KEY_ID, ' +
+          'AWS_SECRET_ACCESS_KEY et AWS_S3_BUCKET_NAME.',
+      );
+    }
+    return this.s3Client;
   }
 
   /**
@@ -123,7 +158,7 @@ export class SimpleStorageService implements ISimpleStorageService {
     let etag = '';
     try {
       const uploader = new Upload({
-        client: this.s3Client,
+        client: this.client(),
         params: {
           Bucket: this.bucketName,
           Key: key,
@@ -168,7 +203,7 @@ export class SimpleStorageService implements ISimpleStorageService {
     let etag = '';
     try {
       const uploader = new Upload({
-        client: this.s3Client,
+        client: this.client(),
         params: {
           Bucket: this.bucketName,
           Key: key,
@@ -214,7 +249,7 @@ export class SimpleStorageService implements ISimpleStorageService {
         Bucket: bucket,
         Key: key,
       });
-      await this.s3Client.send(deleteCommand);
+      await this.client().send(deleteCommand);
       this.logger.log({ key }, 'File deleted successfully from S3');
     } catch (err) {
       this.logger.error({ err, key }, 'Failed to delete file from S3');

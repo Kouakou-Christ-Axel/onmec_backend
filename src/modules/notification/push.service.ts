@@ -9,7 +9,30 @@ import {
 @Injectable()
 export class PushService {
   private readonly logger = new Logger(PushService.name);
+  private avertissementEmis = false;
+
+  /**
+   * Firebase est facultatif (voir NotificationModule). Sans application
+   * initialisee, `admin.messaging()` leve — et comme les envois sont declenches
+   * sans `await` par NotificationService, le rejet serait non capture.
+   *
+   * L'avertissement n'est emis qu'une fois : une diffusion a tous les membres
+   * appelle cette methode par lots.
+   */
+  private pushIndisponible(): boolean {
+    if (admin.apps.length > 0) return false;
+    if (!this.avertissementEmis) {
+      this.avertissementEmis = true;
+      this.logger.warn(
+        'Firebase non configure : envoi push ignore (le fil in-app reste ecrit).',
+      );
+    }
+    return true;
+  }
+
   async sendNotification({ token, title, body, icon }: NotificationDto) {
+    if (this.pushIndisponible()) return null;
+
     this.logger.log({
       message: 'Sending notification',
       title,
@@ -38,6 +61,9 @@ export class PushService {
     body,
     icon,
   }: MultipleDeviceNotificationDto) {
+    if (this.pushIndisponible()) {
+      return { success: false, message: 'Firebase non configure' };
+    }
     this.logger.log({
       message: 'Sending notifications to multiple tokens',
       title,
@@ -75,6 +101,9 @@ export class PushService {
     body,
     icon,
   }: TopicNotificationDto) {
+    if (this.pushIndisponible()) {
+      return { success: false, message: 'Firebase non configure' };
+    }
     const message = {
       notification: {
         title,
