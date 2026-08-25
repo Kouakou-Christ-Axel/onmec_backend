@@ -122,6 +122,9 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           command_timeout: 10m
           script_stop: true
+          # `appleboy/ssh-action` n'herite pas de l'environnement du runner :
+          # ces deux variables doivent etre transferees explicitement.
+          envs: NODE_ENV,SEED_ADMIN_PASSWORD
           script: |
             set -e
             export NVM_DIR="$HOME/.nvm"
@@ -136,6 +139,20 @@ jobs:
             pnpm exec prisma generate
             pnpm exec prisma migrate deploy
             pnpm exec prisma db seed
+        # Le seed decide de son comportement sur NODE_ENV : sans cette variable,
+        # il se croit en developpement et insere les donnees de demonstration —
+        # dont des comptes dont le mot de passe est litteralement « password » —
+        # puis cree les trois comptes back-office avec le mot de passe de repli
+        # ecrit dans le depot. Le `.env` du serveur peut la porter, mais rien ne
+        # le garantit : on la pose ici pour ne pas en dependre.
+        #
+        # SEED_ADMIN_PASSWORD vient d'un secret GitHub. S'il est absent ET
+        # qu'aucun compte back-office n'existe encore, le seed echoue — c'est
+        # voulu : mieux vaut un deploiement rouge qu'un administrateur national
+        # dont le mot de passe est public.
+        env:
+          NODE_ENV: production
+          SEED_ADMIN_PASSWORD: ${{ secrets.SEED_ADMIN_PASSWORD }}
 
   deploy:
     name: Deploy
