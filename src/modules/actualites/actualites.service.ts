@@ -519,18 +519,38 @@ export class ActualitesService {
 
   private addCdnUrl(actualite: ActualiteEntity) {
     if (!actualite.imageUrl) return actualite;
-    // Normalise le join pour éviter les doubles slashes (ex: "https://host/" + "/uploads/..."),
-    // qui font échouer le service de fichiers statiques et déclenchent ERR_BLOCKED_BY_ORB côté navigateur.
+    return {
+      ...actualite,
+      imageUrl: this.prefixCdnUrl(actualite.imageUrl),
+    };
+  }
+
+  /**
+   * Préfixe un chemin relatif par l'URL du CDN.
+   *
+   * Normalise le join pour éviter les doubles slashes (ex: "https://host/" + "/uploads/..."),
+   * qui font échouer le service de fichiers statiques et déclenchent ERR_BLOCKED_BY_ORB côté navigateur.
+   */
+  private prefixCdnUrl(relativePath: string): string {
     const cdnUrl = (this.configService.get<string>('CDN_URL') || '').replace(
       /\/+$/,
       '',
     );
-    const path = actualite.imageUrl.startsWith('/')
-      ? actualite.imageUrl
-      : `/${actualite.imageUrl}`;
-    return {
-      ...actualite,
-      imageUrl: `${cdnUrl}${path}`,
-    };
+    const path = relativePath.startsWith('/')
+      ? relativePath
+      : `/${relativePath}`;
+    return `${cdnUrl}${path}`;
+  }
+
+  /**
+   * Construit l'URL d'une image téléversée pour le corps d'un article.
+   *
+   * Stockée dans un sous-dossier dédié (`contenu`), distinct de celui des
+   * couvertures, pour ne pas mélanger les fichiers d'illustration du corps
+   * de texte avec les images de couverture des actualités.
+   */
+  buildContentImageUrl(image: Express.Multer.File): { url: string } {
+    const relativePath = `/uploads/actualites/contenu/${image.filename}`;
+    return { url: this.prefixCdnUrl(relativePath) };
   }
 }

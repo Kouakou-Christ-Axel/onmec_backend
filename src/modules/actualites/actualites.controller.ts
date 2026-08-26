@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -43,6 +44,10 @@ import { ActualiteResponseDto } from './dto/actualite-response.dto';
 
 const IMAGE_UPLOAD = GenerateConfigService.generateConfigSingleImageUpload(
   './uploads/actualites',
+);
+
+const CONTENU_IMAGE_UPLOAD = GenerateConfigService.generateConfigSingleImageUpload(
+  './uploads/actualites/contenu',
 );
 
 /** Rôles éditoriaux : rédaction et publication des actualités. */
@@ -125,6 +130,37 @@ export class ActualitesController {
   ) {
     await this.compressInPlace(image);
     return this.actualitesService.update(id, updateActualiteDto, image);
+  }
+
+  @Post('upload-image')
+  @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
+  @AdminRoles(...EDITORIAL)
+  @ApiBearerAuth('JWT')
+  @ApiOperation({
+    summary: "Téléverser une image pour le corps d'un article",
+    description:
+      "Compresse et stocke une image dans un sous-dossier dédié au contenu (distinct de la couverture), pour l'insertion dans le corps de l'article via l'éditeur.",
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { image: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: 'Image téléversée',
+    schema: { properties: { url: { type: 'string' } } },
+  })
+  @ApiForbiddenResponse({ description: 'Rôle éditorial requis' })
+  @UseInterceptors(FileInterceptor('image', CONTENU_IMAGE_UPLOAD))
+  async uploadImage(@UploadedFile() image?: Express.Multer.File) {
+    if (!image) {
+      throw new BadRequestException('Fichier image requis');
+    }
+    await this.compressInPlace(image);
+    return this.actualitesService.buildContentImageUrl(image);
   }
 
   @Patch(':id/publier')

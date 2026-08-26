@@ -85,6 +85,17 @@ describe('ActualitesService', () => {
     });
   });
 
+  describe("construction de l'URL image de contenu", () => {
+    it("construit l'URL CDN dans le sous-dossier contenu", async () => {
+      const svc = await buildService('https://admin.mec-ci.org');
+      expect(
+        svc.buildContentImageUrl({ filename: 'x.png' } as Express.Multer.File),
+      ).toEqual({
+        url: 'https://admin.mec-ci.org/uploads/actualites/contenu/x.png',
+      });
+    });
+  });
+
   describe('filtre de visibilité', () => {
     it('restreint un visiteur anonyme aux actualités publiées', () => {
       expect(visibility(service, undefined)).toEqual({
