@@ -34,7 +34,7 @@ import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
 import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
 import { SearchDocumentDto } from './dto/search-document.dto';
-import { UploadValidationPipe } from '../image-processing/upload-validation/upload-validation.pipe';
+import { UploadValidationPipe } from '../../common/pipes/upload-validation/upload-validation.pipe';
 
 @ApiTags('Librairie')
 @Controller('librairie')

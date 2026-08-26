@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import slugify from '../../../../utils/slugify';
 import { extname } from 'path';
-import { DocumentFilesDto } from '../../librairie/dto/create-document.dto';
+import { DocumentFilesDto } from '../../../modules/librairie/dto/create-document.dto';
 
 @Injectable()
 export class UploadValidationPipe implements PipeTransform {

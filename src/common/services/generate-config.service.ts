@@ -54,33 +54,6 @@ export class GenerateConfigService {
         return imageConfig;
     }
 
-    static generateConfigMultipleImageUpload(destination: string, name?: string) {
-        return {
-            storage: diskStorage({
-                destination,
-                filename: async (req, file, cb) => {
-                    const ext = extname(file.originalname);
-                    const fileNameHash = await GenerateDataService.generateSecureImageName(name ? req.body[name] : file.originalname);
-                    const filename = `${fileNameHash}${ext}`;
-                    cb(null, filename);
-                },
-            }),
-            limits: { fileSize: GenerateConfigService.MAX_IMAGE_BYTES },
-            fileFilter: (req, file, cb) => {
-                // Insensible à la casse + formats iOS (heic/heif).
-                if (!file.originalname.match(GenerateConfigService.ALLOWED_IMAGE_EXT)) {
-                    return cb(
-                        new BadRequestException(
-                            'Seuls les fichiers image sont acceptés (jpg, jpeg, png, gif, webp, heic, heif)',
-                        ),
-                        false,
-                    );
-                }
-                cb(null, true);
-            }
-        };
-    }
-
     static async compressImages(
         fileMap: Record<string, string>, // <-- entrée modifiée
         outputDir?: string,
