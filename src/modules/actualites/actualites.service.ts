@@ -190,10 +190,30 @@ export class ActualitesService {
     };
   }
 
+  /**
+   * Refuse une `imageKey` qui ne pointe pas vers une couverture.
+   *
+   * Sans ce garde-fou, un client pourrait réutiliser par erreur une clé
+   * générée pour le corps d'un article (`actualites/contenu/...`), ou
+   * fournir une valeur arbitraire n'importe où dans le bucket.
+   */
+  private assertCoverImageKey(imageKey?: string) {
+    if (imageKey === undefined) return;
+    if (
+      !imageKey.startsWith('actualites/') ||
+      imageKey.startsWith('actualites/contenu/')
+    ) {
+      throw new BadRequestException(
+        "imageKey doit être une clé de couverture générée par POST /actualites/upload-url",
+      );
+    }
+  }
+
   async create(
     createActualiteDto: CreateActualiteDto,
     author: AuthenticatedActor,
   ) {
+    this.assertCoverImageKey(createActualiteDto.imageKey);
     const imageUrl = createActualiteDto.imageKey ?? null;
     // `tags` est une liste de noms, pas une colonne : il ne peut pas etre
     // repandu tel quel dans `data`. `imageKey` non plus : la colonne
@@ -364,6 +384,7 @@ export class ActualitesService {
   }
 
   async update(id: string, updateActualiteDto: UpdateActualiteDto) {
+    this.assertCoverImageKey(updateActualiteDto.imageKey);
     const actualite = await this.assertExists(id);
 
     const { tags, categorieId, imageKey, ...champs } = updateActualiteDto;
@@ -538,15 +559,15 @@ export class ActualitesService {
   }
 
   /**
-   * Génère une URL présignée pour une image du corps d'un article.
+   * Génère une URL présignée pour une image, sous le préfixe de dossier donné.
    *
-   * Stockée sous un préfixe dédié (`actualites/contenu/`), distinct de celui
-   * des couvertures, pour ne pas mélanger les fichiers d'illustration du
-   * corps de texte avec les images de couverture des actualités. Pas de
-   * finalisation séparée : une fois le PUT réussi, le client construit
-   * lui-même l'URL publique depuis la clé.
+   * Partagée par les deux flux d'upload d'actualités : couverture
+   * (`actualites/`) et corps d'article (`actualites/contenu/`), seul le
+   * préfixe change. Pas de finalisation séparée : une fois le PUT réussi, le
+   * client construit lui-même l'URL publique depuis la clé.
    */
-  async buildContentImageUrl(
+  private async presignImageUpload(
+    folder: string,
     filename: string,
     contentType: string,
   ): Promise<UploadImageResponseDto> {
@@ -558,7 +579,7 @@ export class ActualitesService {
 
     const ext = extname(filename);
     const name = await GenerateDataService.generateSecureImageName(filename);
-    const key = `actualites/contenu/${name}${ext}`;
+    const key = `${folder}/${name}${ext}`;
     const uploadUrl = await this.r2Service.getUploadUrl(
       key,
       contentType,
@@ -566,5 +587,15 @@ export class ActualitesService {
     );
 
     return { key, uploadUrl, expiresIn: UPLOAD_EXPIRES_IN };
+  }
+
+  /** Image du corps d'un article, distincte de la couverture. */
+  buildContentImageUrl(filename: string, contentType: string) {
+    return this.presignImageUpload('actualites/contenu', filename, contentType);
+  }
+
+  /** Image de couverture d'une actualité. */
+  buildCoverImageUrl(filename: string, contentType: string) {
+    return this.presignImageUpload('actualites', filename, contentType);
   }
 }

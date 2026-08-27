@@ -114,6 +114,49 @@ describe('ActualitesService', () => {
     });
   });
 
+  describe("génération de l'URL présignée pour une image de couverture", () => {
+    it('génère une clé sous actualites/ (pas actualites/contenu/)', async () => {
+      const svc = await buildService('https://cdn.mec-ci.org');
+      const r2 = (svc as any).r2Service as { getUploadUrl: jest.Mock };
+      r2.getUploadUrl = jest
+        .fn()
+        .mockResolvedValue('https://r2.example/put-url');
+
+      const result = await svc.buildCoverImageUrl('photo.png', 'image/png');
+
+      expect(result.key).toMatch(/^actualites\/[^/]+\.png$/);
+      expect(result.uploadUrl).toBe('https://r2.example/put-url');
+      expect(result.expiresIn).toBe(300);
+    });
+  });
+
+  describe('validation de imageKey sur create/update', () => {
+    const assertCoverImageKey = (svc: ActualitesService, key?: string) =>
+      (svc as any).assertCoverImageKey(key);
+
+    it("accepte une clé sous actualites/ hors contenu", () => {
+      expect(() =>
+        assertCoverImageKey(service, 'actualites/photo.png'),
+      ).not.toThrow();
+    });
+
+    it('accepte l’absence de clé', () => {
+      expect(() => assertCoverImageKey(service, undefined)).not.toThrow();
+    });
+
+    it('rejette une clé de contenu réutilisée comme couverture', () => {
+      expect(() =>
+        assertCoverImageKey(service, 'actualites/contenu/photo.png'),
+      ).toThrow('imageKey doit être une clé de couverture');
+    });
+
+    it('rejette une clé hors du préfixe actualites/', () => {
+      expect(() =>
+        assertCoverImageKey(service, 'librairie/photo.png'),
+      ).toThrow('imageKey doit être une clé de couverture');
+    });
+  });
+
   describe('filtre de visibilité', () => {
     it('restreint un visiteur anonyme aux actualités publiées', () => {
       expect(visibility(service, undefined)).toEqual({

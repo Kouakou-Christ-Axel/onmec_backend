@@ -96,6 +96,29 @@ export class ActualitesController {
     return this.actualitesService.update(id, updateActualiteDto);
   }
 
+  @Post('upload-url')
+  @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
+  @AdminRoles(...EDITORIAL)
+  @ApiBearerAuth('JWT')
+  @ApiOperation({
+    summary: "Demander une URL présignée pour l'image de couverture",
+    description:
+      "Génère une clé d'objet sous `actualites/` (distincte du contenu, sous `actualites/contenu/`) et une URL PUT présignée. Le client envoie ensuite le fichier directement à R2, puis fournit la clé retournée en `imageKey` lors du POST/PATCH de l'actualité.",
+  })
+  @ApiBody({ type: UploadImageRequestDto })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: 'URL présignée générée',
+    type: UploadImageResponseDto,
+  })
+  @ApiForbiddenResponse({ description: 'Rôle éditorial requis' })
+  async uploadUrl(@Body() dto: UploadImageRequestDto) {
+    return this.actualitesService.buildCoverImageUrl(
+      dto.filename,
+      dto.contentType,
+    );
+  }
+
   @Post('upload-image')
   @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
   @AdminRoles(...EDITORIAL)
