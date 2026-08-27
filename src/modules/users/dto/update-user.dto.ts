@@ -30,7 +30,12 @@ export class UpdateUserDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   phone?: string;
 
-  @ApiPropertyOptional({ description: 'Avatar', type: 'file' as 'string' })
+  @ApiPropertyOptional({
+    description:
+      "Clé R2 de l'avatar, obtenue via une demande d'URL présignée préalable (POST /users/avatar/upload-url)",
+    example: 'users-avatar/1732000000000.jpg',
+  })
   @IsOptional()
-  image?: string;
+  @IsString()
+  avatarKey?: string;
 }

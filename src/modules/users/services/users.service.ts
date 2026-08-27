@@ -2,8 +2,10 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { extname } from 'path';
 
 import { CreateUserDto } from '../dto/create-user.dto';
 import { Prisma, StatutMembre } from '../../../generated/prisma/client';
@@ -15,7 +17,13 @@ import { UpdateUserDto } from '../dto/update-user.dto';
 import { UpdateUserPasswordDto } from '../dto/update-user-password.dto';
 import { UpdateMemberStatutDto } from '../dto/update-member-statut.dto';
 import { GenerateDataService } from 'src/common/services/generate-data.service';
+import { GenerateConfigService } from 'src/common/services/generate-config.service';
+import { R2StorageService } from 'src/common/services/r2-storage.service';
 import { ResetUserPasswordResponseDto } from '../dto/reset-user-password.dto';
+import { UploadAvatarResponseDto } from '../dto/upload-avatar.dto';
+
+/** Durée de validité des URL présignées d'upload d'avatar, en secondes. */
+const AVATAR_UPLOAD_EXPIRES_IN = 300;
 
 /**
  * Champs exposables d'un membre.
@@ -43,11 +51,89 @@ const MEMBER_PUBLIC_SELECT = {
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly generateDataService: GenerateDataService,
     private readonly hashService: HashService,
+    private readonly r2Service: R2StorageService,
   ) {}
+
+  /**
+   * Refuse une `avatarKey` qui ne pointe pas vers le dossier des avatars.
+   *
+   * Sans ce garde-fou, un client pourrait fournir la clé générée pour un
+   * autre module (actualités, librairie…), ou une valeur arbitraire
+   * n'importe où dans le bucket.
+   */
+  private assertAvatarKey(avatarKey?: string) {
+    if (avatarKey === undefined) return;
+    if (!avatarKey.startsWith('users-avatar/')) {
+      throw new BadRequestException(
+        "avatarKey doit être une clé générée par POST /users/avatar/upload-url",
+      );
+    }
+  }
+
+  /**
+   * Extrait la clé objet R2 depuis la valeur stockée en base, si elle en a
+   * la forme.
+   *
+   * Les comptes créés avant cette migration portent encore un chemin
+   * `/uploads/users-avatar/...` ; certains peuvent même porter une valeur
+   * antérieure non reconnaissable. Dans les deux cas, on ignore la
+   * suppression plutôt que d'échouer : un avatar déjà remplacé en base ne
+   * doit jamais faire échouer la requête à cause d'un objet R2 orphelin ou
+   * inexistant.
+   */
+  private extractAvatarKey(avatar: string): string | null {
+    const key = avatar.replace(/^\/?uploads\//, '');
+    return key.startsWith('users-avatar/') ? key : null;
+  }
+
+  /** Suppression best-effort : l'échec ne doit pas faire échouer la requête. */
+  private async deleteOldAvatar(avatar: string) {
+    const key = this.extractAvatarKey(avatar);
+    if (!key) return;
+
+    try {
+      await this.r2Service.delete(key);
+    } catch (error) {
+      this.logger.warn(
+        `Impossible de supprimer l'avatar R2 ${key}: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  /** Remplace la clé R2 stockée par son URL publique dans une réponse. */
+  private mapMember<T extends { avatar?: string | null }>(member: T): T {
+    if (!member.avatar) return member;
+    return { ...member, avatar: this.r2Service.getPublicUrl(member.avatar) };
+  }
+
+  /** Génère une URL présignée pour l'avatar d'un membre. */
+  async buildAvatarUploadUrl(
+    filename: string,
+    contentType: string,
+  ): Promise<UploadAvatarResponseDto> {
+    if (!filename.match(GenerateConfigService.ALLOWED_IMAGE_EXT)) {
+      throw new BadRequestException(
+        'Seuls les fichiers image sont acceptés (jpg, jpeg, png, gif, webp, heic, heif)',
+      );
+    }
+
+    const ext = extname(filename);
+    const name = await GenerateDataService.generateSecureImageName(filename);
+    const key = `users-avatar/${name}${ext}`;
+    const uploadUrl = await this.r2Service.getUploadUrl(
+      key,
+      contentType,
+      AVATAR_UPLOAD_EXPIRES_IN,
+    );
+
+    return { key, uploadUrl, expiresIn: AVATAR_UPLOAD_EXPIRES_IN };
+  }
 
   /**
    * Cree un compte membre depuis le back-office.
@@ -56,6 +142,8 @@ export class UsersService {
    * l'administrateur qui cree le compte, a charge pour lui de le transmettre.
    */
   async createMember(createUserDto: CreateUserDto) {
+    this.assertAvatarKey(createUserDto.avatarKey);
+
     const exists = await this.prisma.member.findUnique({
       where: { email: createUserDto.email },
       select: { id: true },
@@ -65,20 +153,20 @@ export class UsersService {
     }
 
     const plainPassword = this.generateDataService.generateSecurePassword();
-    const { image, ...userData } = createUserDto;
+    const { avatarKey, ...userData } = createUserDto;
 
     const member = await this.prisma.member.create({
       data: {
         ...userData,
         password: await this.hashService.hash(plainPassword),
-        avatar: image,
+        avatar: avatarKey,
         // Cree par un administrateur : l'adresse est reputee verifiee.
         emailVerified: true,
       },
       select: MEMBER_PUBLIC_SELECT,
     });
 
-    return { ...member, password: plainPassword };
+    return { ...this.mapMember(member), password: plainPassword };
   }
 
   // FIND_ALL (pagine + filtres)
@@ -121,7 +209,7 @@ export class UsersService {
     ]);
 
     return {
-      data,
+      data: data.map((member) => this.mapMember(member)),
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) || 1 },
     };
   }
@@ -136,18 +224,27 @@ export class UsersService {
       throw new NotFoundException('Utilisateur non trouvé');
     }
 
-    return user;
+    return this.mapMember(user);
   }
 
   async updateById(id: string, updateUserDto: UpdateUserDto) {
-    await this.assertExists(id);
+    this.assertAvatarKey(updateUserDto.avatarKey);
+    const existing = await this.assertExists(id);
 
-    const { image, ...userData } = updateUserDto;
-    return this.prisma.member.update({
+    const { avatarKey, ...userData } = updateUserDto;
+    const updated = await this.prisma.member.update({
       where: { id },
-      data: { ...userData, ...(image ? { avatar: image } : {}) },
+      data: { ...userData, ...(avatarKey ? { avatar: avatarKey } : {}) },
       select: MEMBER_PUBLIC_SELECT,
     });
+
+    // L'ancien objet R2 n'etait jamais supprime : chaque remplacement d'avatar
+    // laissait un orphelin definitif dans le bucket.
+    if (avatarKey !== undefined && existing.avatar) {
+      await this.deleteOldAvatar(existing.avatar);
+    }
+
+    return this.mapMember(updated);
   }
 
   /**
@@ -167,7 +264,7 @@ export class UsersService {
 
     const suspendu = dto.statut !== StatutMembre.ACTIF;
 
-    return this.prisma.member.update({
+    const updated = await this.prisma.member.update({
       where: { id },
       data: {
         statut: dto.statut,
@@ -177,27 +274,33 @@ export class UsersService {
       },
       select: MEMBER_PUBLIC_SELECT,
     });
+
+    return this.mapMember(updated);
   }
 
   /** Suppression logique : le compte disparait des surfaces publiques. */
   async softDeleteById(id: string) {
     await this.assertExists(id);
 
-    return this.prisma.member.update({
+    const updated = await this.prisma.member.update({
       where: { id },
       data: { deletedAt: new Date() },
       select: MEMBER_PUBLIC_SELECT,
     });
+
+    return this.mapMember(updated);
   }
 
   async restore(id: string) {
     await this.assertExists(id);
 
-    return this.prisma.member.update({
+    const updated = await this.prisma.member.update({
       where: { id },
       data: { deletedAt: null },
       select: MEMBER_PUBLIC_SELECT,
     });
+
+    return this.mapMember(updated);
   }
 
   /**
@@ -237,13 +340,21 @@ export class UsersService {
   }
 
   async update(actor: AuthenticatedActor, updateUserDto: UpdateUserDto) {
-    const { image, ...userData } = updateUserDto;
+    this.assertAvatarKey(updateUserDto.avatarKey);
+    const existing = await this.assertExists(actor.id);
 
-    return this.prisma.member.update({
+    const { avatarKey, ...userData } = updateUserDto;
+    const updated = await this.prisma.member.update({
       where: { id: actor.id },
-      data: { ...userData, ...(image ? { avatar: image } : {}) },
+      data: { ...userData, ...(avatarKey ? { avatar: avatarKey } : {}) },
       select: MEMBER_PUBLIC_SELECT,
     });
+
+    if (avatarKey !== undefined && existing.avatar) {
+      await this.deleteOldAvatar(existing.avatar);
+    }
+
+    return this.mapMember(updated);
   }
 
   async updatePassword(
@@ -271,11 +382,13 @@ export class UsersService {
       throw new BadRequestException('Le mot de passe actuel est incorrect');
     }
 
-    return this.prisma.member.update({
+    const updated = await this.prisma.member.update({
       where: { id: actor.id },
       data: { password: await this.hashService.hash(dto.password) },
       select: MEMBER_PUBLIC_SELECT,
     });
+
+    return this.mapMember(updated);
   }
 
   /** Genere un mot de passe temporaire, retourne une seule fois a l'admin. */
@@ -300,20 +413,23 @@ export class UsersService {
 
   /** Suppression de son propre compte par le membre. */
   async partialRemove(actor: AuthenticatedActor) {
-    return this.prisma.member.update({
+    const updated = await this.prisma.member.update({
       where: { id: actor.id },
       data: { deletedAt: new Date() },
       select: MEMBER_PUBLIC_SELECT,
     });
+
+    return this.mapMember(updated);
   }
 
   private async assertExists(id: string) {
     const exists = await this.prisma.member.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, avatar: true },
     });
     if (!exists) {
       throw new NotFoundException('Utilisateur non trouvé');
     }
+    return exists;
   }
 }
