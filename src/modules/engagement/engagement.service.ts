@@ -29,6 +29,17 @@ import {
 
 export type EngagementTarget = 'signalement' | 'actualite';
 
+/** Auteur exposé sur un commentaire, en lecture publique comme en modération. */
+const COMMENTAIRE_AUTEUR_SELECT = {
+  select: { id: true, fullname: true, avatar: true },
+} as const;
+
+/** Cible d'un commentaire, jointe uniquement pour les vues de modération. */
+const COMMENTAIRE_CIBLE_INCLUDE = {
+  signalement: { select: { id: true, titre: true } },
+  actualite: { select: { id: true, title: true } },
+} as const;
+
 @Injectable()
 export class EngagementService {
   private readonly logger = new Logger(EngagementService.name);
@@ -138,7 +149,7 @@ export class EngagementService {
     if (liked) {
       // Idempotent cote gamification : le sourceId est la cible, donc unliker
       // puis reliker ne recredite pas.
-      await this.gamification.attribuerSansEchouer({
+      await this.gamification.attribuer({
         userId,
         source: PointSource.LIKE,
         sourceId: targetId,
@@ -174,7 +185,7 @@ export class EngagementService {
       this.prisma.commentaire.findMany({
         where,
         include: {
-          user: { select: { id: true, fullname: true, avatar: true } },
+          user: COMMENTAIRE_AUTEUR_SELECT,
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
@@ -208,14 +219,14 @@ export class EngagementService {
         ...this.targetWhere(target, targetId),
       },
       include: {
-        user: { select: { id: true, fullname: true, avatar: true } },
+        user: COMMENTAIRE_AUTEUR_SELECT,
       },
     });
 
     // Chaque commentaire porte un identifiant different : l'idempotence ne
     // borne donc rien ici, c'est le plafond quotidien de la source COMMENTAIRE
     // qui rend le spam sans interet.
-    await this.gamification.attribuerSansEchouer({
+    await this.gamification.attribuer({
       userId,
       source: PointSource.COMMENTAIRE,
       sourceId: commentaire.id,
@@ -334,9 +345,8 @@ export class EngagementService {
       this.prisma.commentaire.findMany({
         where,
         include: {
-          user: { select: { id: true, fullname: true, avatar: true } },
-          signalement: { select: { id: true, titre: true } },
-          actualite: { select: { id: true, title: true } },
+          user: COMMENTAIRE_AUTEUR_SELECT,
+          ...COMMENTAIRE_CIBLE_INCLUDE,
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
@@ -371,9 +381,8 @@ export class EngagementService {
       where: { id },
       data: { masque },
       include: {
-        user: { select: { id: true, fullname: true, avatar: true } },
-        signalement: { select: { id: true, titre: true } },
-        actualite: { select: { id: true, title: true } },
+        user: COMMENTAIRE_AUTEUR_SELECT,
+        ...COMMENTAIRE_CIBLE_INCLUDE,
       },
     });
 
@@ -413,20 +422,18 @@ export class EngagementService {
   private mapModerationCommentaire(
     commentaire: any,
   ): ModerationCommentaireResponseDto {
-    let cible: ModerationCommentaireResponseDto['cible'] = null;
-    if (commentaire.signalement) {
-      cible = {
-        type: 'signalement',
-        id: commentaire.signalement.id,
-        titre: commentaire.signalement.titre,
-      };
-    } else if (commentaire.actualite) {
-      cible = {
-        type: 'actualite',
-        id: commentaire.actualite.id,
-        titre: commentaire.actualite.title,
-      };
-    }
+    // `signalement` et `actualite` sont exclusifs : un commentaire ne cible
+    // jamais les deux. `??` retient celui des deux qui existe, sans branche
+    // if/else-if dupliquant la construction de l'objet.
+    const source = commentaire.signalement ?? commentaire.actualite;
+    const cible: ModerationCommentaireResponseDto['cible'] = source
+      ? {
+          type: commentaire.signalement ? 'signalement' : 'actualite',
+          id: source.id,
+          // Les deux modeles ne portent pas le meme nom de champ pour ce titre.
+          titre: commentaire.signalement ? source.titre : source.title,
+        }
+      : null;
 
     return {
       id: commentaire.id,

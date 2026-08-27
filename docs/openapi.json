@@ -1,6 +1,20 @@
 {
   "openapi": "3.0.0",
   "paths": {
+    "/health": {
+      "get": {
+        "operationId": "HealthController_check",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Health"
+        ]
+      }
+    },
     "/users/avatar/upload-url": {
       "post": {
         "description": "Génère une clé d'objet sous users-avatar/ et une URL PUT présignée. Le client envoie ensuite le fichier directement à R2, puis passe la clé retournée en avatarKey à POST /users ou PATCH /users.",
@@ -2108,36 +2122,21 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/SignalementCitoyenDto"
-                      }
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/PaginatedResponseDto"
                     },
-                    "meta": {
-                      "type": "object",
+                    {
                       "properties": {
-                        "total": {
-                          "type": "number",
-                          "example": 100
-                        },
-                        "page": {
-                          "type": "number",
-                          "example": 1
-                        },
-                        "limit": {
-                          "type": "number",
-                          "example": 10
-                        },
-                        "totalPages": {
-                          "type": "number",
-                          "example": 10
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/SignalementCitoyenDto"
+                          }
                         }
                       }
                     }
-                  }
+                  ]
                 }
               }
             }
@@ -2185,36 +2184,21 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/SignalementCitoyenDto"
-                      }
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/PaginatedResponseDto"
                     },
-                    "meta": {
-                      "type": "object",
+                    {
                       "properties": {
-                        "total": {
-                          "type": "number",
-                          "example": 4
-                        },
-                        "page": {
-                          "type": "number",
-                          "example": 1
-                        },
-                        "limit": {
-                          "type": "number",
-                          "example": 10
-                        },
-                        "totalPages": {
-                          "type": "number",
-                          "example": 1
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/SignalementCitoyenDto"
+                          }
                         }
                       }
                     }
-                  }
+                  ]
                 }
               }
             }
@@ -2354,36 +2338,21 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/SignalementCitoyenDto"
-                      }
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/PaginatedResponseDto"
                     },
-                    "meta": {
-                      "type": "object",
+                    {
                       "properties": {
-                        "total": {
-                          "type": "number",
-                          "example": 42
-                        },
-                        "page": {
-                          "type": "number",
-                          "example": 1
-                        },
-                        "limit": {
-                          "type": "number",
-                          "example": 10
-                        },
-                        "totalPages": {
-                          "type": "number",
-                          "example": 5
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/SignalementCitoyenDto"
+                          }
                         }
                       }
                     }
-                  }
+                  ]
                 }
               }
             }
@@ -2464,46 +2433,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "properties": {
-                  "titre": {
-                    "type": "string"
-                  },
-                  "description": {
-                    "type": "string"
-                  },
-                  "categorieId": {
-                    "type": "string",
-                    "format": "uuid"
-                  },
-                  "adresse": {
-                    "type": "string"
-                  },
-                  "latitude": {
-                    "type": "number"
-                  },
-                  "longitude": {
-                    "type": "number"
-                  },
-                  "statut": {
-                    "type": "string",
-                    "enum": [
-                      "NOUVEAU",
-                      "EN_COURS",
-                      "RESOLU",
-                      "REJETE"
-                    ]
-                  },
-                  "validation": {
-                    "type": "boolean",
-                    "description": "Nécessite les droits admin"
-                  },
-                  "photoKey": {
-                    "type": "string",
-                    "description": "Nouvelle clé R2 de la photo, obtenue via POST /signalement-citoyen/upload-url",
-                    "example": "signalements/1732000000000.jpg"
-                  }
-                }
+                "$ref": "#/components/schemas/UpdateSignalementCitoyenDto"
               }
             }
           }
@@ -3549,7 +3479,7 @@
             "name": "page",
             "required": false,
             "in": "query",
-            "description": "Page courante",
+            "description": "Numéro de la page (commence à 1)",
             "schema": {
               "default": 1,
               "example": 1,
@@ -3560,9 +3490,8 @@
             "name": "limit",
             "required": false,
             "in": "query",
-            "description": "Éléments par page",
+            "description": "Nombre d'éléments par page",
             "schema": {
-              "maximum": 100,
               "default": 20,
               "example": 20,
               "type": "number"
@@ -5322,20 +5251,6 @@
           "Actualités — tags"
         ]
       }
-    },
-    "/health": {
-      "get": {
-        "operationId": "HealthController_check",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Health"
-        ]
-      }
     }
   },
   "info": {
@@ -5400,7 +5315,7 @@
           "filename": {
             "type": "string",
             "description": "Nom du fichier tel qu'il sera envoyé au client (utilisé pour son extension). Le front redimensionne et convertit les images en WebP avant l'upload.",
-            "example": "avatar.webp"
+            "example": "photo.webp"
           },
           "contentType": {
             "type": "string",
@@ -5921,6 +5836,55 @@
           "password"
         ]
       },
+      "PaginatedMetaDto": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "number",
+            "description": "Nombre total d'éléments",
+            "example": 100
+          },
+          "page": {
+            "type": "number",
+            "description": "Page courante",
+            "example": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Nombre d'éléments par page",
+            "example": 10
+          },
+          "totalPages": {
+            "type": "number",
+            "description": "Nombre total de pages",
+            "example": 10
+          }
+        },
+        "required": [
+          "total",
+          "page",
+          "limit",
+          "totalPages"
+        ]
+      },
+      "PaginatedResponseDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "array"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PaginatedMetaDto"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
       "UploadDocumentRequestDto": {
         "type": "object",
         "properties": {
@@ -6425,6 +6389,67 @@
           "createdAt",
           "updatedAt"
         ]
+      },
+      "UpdateSignalementCitoyenDto": {
+        "type": "object",
+        "properties": {
+          "titre": {
+            "type": "string",
+            "description": "Titre du signalement",
+            "example": "Nid de poule sur la route principale"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description détaillée du signalement",
+            "example": "Un grand nid de poule situé au milieu de la chaussée, dangereux pour les véhicules"
+          },
+          "categorieId": {
+            "type": "string",
+            "description": "Identifiant de la catégorie du signalement",
+            "example": "11000000-0000-0000-0000-000000000001"
+          },
+          "adresse": {
+            "type": "string",
+            "description": "Adresse du lieu du signalement",
+            "example": "Avenue 12, Abidjan, Côte d'Ivoire"
+          },
+          "latitude": {
+            "type": "number",
+            "description": "Latitude de la localisation",
+            "example": 5.36
+          },
+          "longitude": {
+            "type": "number",
+            "description": "Longitude de la localisation",
+            "example": -4.0083
+          },
+          "citoyenId": {
+            "type": "string",
+            "description": "Identifiant du citoyen ayant créé le signalement",
+            "example": "u1s2e3r4-5i6d-7h8e-9r0e-1a2b3c4d5e6f"
+          },
+          "photoKey": {
+            "type": "string",
+            "description": "Clé R2 de la photo, obtenue via une demande d'URL présignée préalable (POST /signalement-citoyen/upload-url)",
+            "example": "signalements/1732000000000.jpg"
+          },
+          "validation": {
+            "type": "boolean",
+            "description": "Indique si le signalement a été validé par un administrateur",
+            "example": true
+          },
+          "statut": {
+            "type": "string",
+            "description": "Statut du signalement",
+            "enum": [
+              "NOUVEAU",
+              "EN_COURS",
+              "RESOLU",
+              "REJETE"
+            ],
+            "example": "EN_COURS"
+          }
+        }
       },
       "CreateCategorieSignalementDto": {
         "type": "object",

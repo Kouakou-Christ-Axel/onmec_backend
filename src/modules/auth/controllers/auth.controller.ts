@@ -4,7 +4,6 @@ import {
   Get,
   HttpCode,
   Post,
-  Req,
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
@@ -22,7 +21,6 @@ import {
   ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { Request } from 'express';
 import { JwtRefreshAuthGuard } from '../guards/jwt-refresh-auth.guard';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { CurrentUser } from '../decorators/current-user.decorator';
@@ -93,8 +91,8 @@ export class AuthController {
   })
   @ApiOkResponse({ description: 'Nouvelle paire de tokens' })
   @ApiUnauthorizedResponse({ description: 'Refresh token invalide ou expiré' })
-  async refreshToken(@Req() req: Request) {
-    return this.authService.refreshToken(req);
+  async refreshToken(@CurrentUser() actor: AuthenticatedActor) {
+    return this.authService.refreshToken(actor);
   }
 
   @Post('refresh-token')
@@ -102,8 +100,8 @@ export class AuthController {
   @ApiBearerAuth('JWT')
   @ApiOperation({ summary: 'Rafraîchissement du token' })
   @ApiOkResponse({ description: 'Nouvelle paire de tokens' })
-  async refreshTokenPost(@Req() req: Request) {
-    return this.authService.refreshToken(req);
+  async refreshTokenPost(@CurrentUser() actor: AuthenticatedActor) {
+    return this.authService.refreshToken(actor);
   }
 
   @Post('register')

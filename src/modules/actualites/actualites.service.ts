@@ -4,7 +4,6 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { extname } from 'path';
 import { CreateActualiteDto } from './dto/create-actualite.dto';
 import { UpdateActualiteDto } from './dto/update-actualite.dto';
 import { UploadImageResponseDto } from './dto/upload-image.dto';
@@ -12,7 +11,6 @@ import { PrismaService } from 'src/database/services/prisma.service';
 import slugify from '../../../utils/slugify';
 import { ActualitesSearchDto } from './dto/actualites-search.dto';
 import { Prisma, StatutActualite } from '../../generated/prisma/client';
-import { ActualiteEntity } from './entities/actualite.entity';
 import { EngagementService } from '../engagement/engagement.service';
 import {
   NOTIFICATION_TYPE,
@@ -24,14 +22,18 @@ import {
 } from 'src/common/types/authenticated-actor';
 import { AdminRole } from '../../generated/prisma/client';
 import { R2StorageService } from 'src/common/services/r2-storage.service';
+import { isPrismaError } from 'src/common/utils/prisma-error';
 
-/** Rôles autorisés à voir et manipuler les brouillons. */
-const EDITORIAL_ROLES: string[] = [
+/**
+ * Rôles autorisés à voir et manipuler les brouillons.
+ *
+ * Exportée : les contrôleurs `actualites` et `taxonomie` protègent leurs
+ * routes d'écriture avec la même liste de rôles via `@AdminRoles(...)`.
+ */
+export const EDITORIAL_ROLES: AdminRole[] = [
   AdminRole.ADMIN_NATIONAL,
   AdminRole.CHARGE_COMMUNICATION,
 ];
-
-/** Durée de validité des URL présignées d'upload, en secondes. */
 
 /** Borne du prefiltre de recherche plein texte. */
 const SEARCH_ID_LIMIT = 500;
@@ -53,6 +55,11 @@ const ACTUALITE_INCLUDE = {
   categorie: { select: { id: true, nom: true, slug: true } },
   tags: { select: { id: true, nom: true, slug: true } },
 } as const;
+
+/** Forme d'une actualité telle que renvoyée avec ses relations jointes. */
+type ActualiteAvecRelations = Prisma.ActualiteGetPayload<{
+  include: typeof ACTUALITE_INCLUDE;
+}>;
 
 @Injectable()
 export class ActualitesService {
@@ -76,7 +83,7 @@ export class ActualitesService {
     actor?: AuthenticatedActor,
   ): Prisma.ActualiteWhereInput {
     const canSeeDrafts =
-      isAdminActor(actor) && EDITORIAL_ROLES.includes(actor.role);
+      isAdminActor(actor) && EDITORIAL_ROLES.includes(actor.role as AdminRole);
 
     return canSeeDrafts
       ? { deletedAt: null }
@@ -148,13 +155,6 @@ export class ActualitesService {
     }
 
     return slug;
-  }
-
-  private isSlugConflict(error: unknown): boolean {
-    return (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === 'P2002'
-    );
   }
 
   /**
@@ -236,16 +236,16 @@ export class ActualitesService {
     try {
       created = await write();
     } catch (error) {
-      if (!this.isSlugConflict(error)) throw error;
+      if (!isPrismaError(error, 'P2002')) throw error;
       created = await write();
     }
 
-    // Passe par mapToEntity : la version précédente retournait la ligne brute,
-    // donc une imageUrl sans préfixe CDN, incohérente avec celle des GET.
+    // Passe par withPublicImageUrl : la version précédente retournait la ligne
+    // brute, donc une imageUrl sans préfixe CDN, incohérente avec celle des GET.
     // Les compteurs d'engagement sont ajoutés pour que la forme de la réponse
     // soit identique à celle des lectures — ils valent zéro par construction.
     return {
-      ...this.mapToEntity(created),
+      ...this.withPublicImageUrl(created),
       likesCount: 0,
       commentsCount: 0,
       likedByMe: false,
@@ -316,7 +316,7 @@ export class ActualitesService {
     );
 
     const mappedData = data.map((item) => ({
-      ...this.mapToEntity(item),
+      ...this.withPublicImageUrl(item),
       ...(stats.get(item.id) ?? {
         likesCount: 0,
         commentsCount: 0,
@@ -346,7 +346,7 @@ export class ActualitesService {
       throw new NotFoundException(`Actualité avec l'ID ${id} non trouvée`);
     }
 
-    return this.withEngagement(this.mapToEntity(actualite), actualite.id, actor);
+    return this.withEngagement(this.withPublicImageUrl(actualite), actualite.id, actor);
   }
 
   async findBySlug(slug: string, actor?: AuthenticatedActor) {
@@ -359,11 +359,11 @@ export class ActualitesService {
       throw new NotFoundException(`Actualité avec le slug ${slug} non trouvée`);
     }
 
-    return this.withEngagement(this.mapToEntity(actualite), actualite.id, actor);
+    return this.withEngagement(this.withPublicImageUrl(actualite), actualite.id, actor);
   }
 
   private async withEngagement(
-    actualite: ActualiteEntity,
+    actualite: ActualiteAvecRelations,
     id: string,
     actor?: AuthenticatedActor,
   ) {
@@ -420,7 +420,7 @@ export class ActualitesService {
       await this.deleteR2Object(actualite.imageUrl);
     }
 
-    return this.withEngagement(this.mapToEntity(updated), updated.id);
+    return this.withEngagement(this.withPublicImageUrl(updated), updated.id);
   }
 
   /** Publie une actualité. `publishedAt` n'est posé qu'à la première publication. */
@@ -454,7 +454,7 @@ export class ActualitesService {
       });
     }
 
-    return this.withEngagement(this.mapToEntity(updated), updated.id);
+    return this.withEngagement(this.withPublicImageUrl(updated), updated.id);
   }
 
   /** Retire une actualité de la diffusion publique, sans perdre son contenu. */
@@ -467,7 +467,7 @@ export class ActualitesService {
       include: ACTUALITE_INCLUDE,
     });
 
-    return this.withEngagement(this.mapToEntity(updated), updated.id);
+    return this.withEngagement(this.withPublicImageUrl(updated), updated.id);
   }
 
   /**
@@ -486,7 +486,7 @@ export class ActualitesService {
       include: ACTUALITE_INCLUDE,
     });
 
-    return this.withEngagement(this.mapToEntity(updated), updated.id);
+    return this.withEngagement(this.withPublicImageUrl(updated), updated.id);
   }
 
   async restore(id: string) {
@@ -502,7 +502,7 @@ export class ActualitesService {
       include: ACTUALITE_INCLUDE,
     });
 
-    return this.withEngagement(this.mapToEntity(updated), updated.id);
+    return this.withEngagement(this.withPublicImageUrl(updated), updated.id);
   }
 
   /** Existence côté back-office : ignore le statut, respecte le soft-delete. */
@@ -541,13 +541,13 @@ export class ActualitesService {
     }
   }
 
-  private mapToEntity(actualite: any): ActualiteEntity {
-    const entity = new ActualiteEntity();
-    Object.assign(entity, actualite);
-    return this.addPublicUrl(entity);
-  }
-
-  private addPublicUrl(actualite: ActualiteEntity) {
+  /**
+   * Préfixe `imageUrl` (clé objet R2) par l'URL publique du bucket.
+   *
+   * Remplace l'ancien trio ActualiteEntity + mapToEntity + addPublicUrl :
+   * trois indirections pour une seule transformation.
+   */
+  private withPublicImageUrl(actualite: ActualiteAvecRelations) {
     if (!actualite.imageUrl) return actualite;
     return {
       ...actualite,

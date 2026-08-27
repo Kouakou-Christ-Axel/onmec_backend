@@ -67,13 +67,3 @@ export class PublicDocumentResponseDto {
   @ApiProperty({ description: "Nom de l'auteur du document", example: "Jean Dupont" })
   auteur: string;
 }
-
-export interface PaginatedResponse<T> {
-  data: T[];
-  meta: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
-}

@@ -7,15 +7,25 @@ import { extname } from 'path';
 import { PDFParse } from 'pdf-parse';
 import { SearchDocumentDto } from './dto/search-document.dto';
 import { ConfigService } from '@nestjs/config';
-import { DocumentResponseDto, PaginatedResponse, PublicDocumentResponseDto } from './dto/document-response.dto';
+import { DocumentResponseDto, PublicDocumentResponseDto } from './dto/document-response.dto';
 import { DocumentUploadKind, UploadDocumentRequestDto, UploadDocumentResponseDto } from './dto/upload-document.dto';
 import { R2StorageService } from '../../common/services/r2-storage.service';
+import { PaginatedResponseDto } from '../../common/dto/paginated-response.dto';
 
 /** Durée de validité des URL présignées d'upload, en secondes. */
 const UPLOAD_EXPIRES_IN = 300;
 
 /** Extensions de couverture acceptées — plus restreint que les images générales. */
 const ALLOWED_COVER_EXT = /\.(jpg|jpeg|png|webp)$/i;
+
+/** Relation chargée avec chaque document pour exposer l'auteur de l'upload. */
+const UPLOADED_BY_SELECT = {
+	select: {
+		id: true,
+		fullname: true,
+		email: true,
+	},
+} as const;
 
 @Injectable()
 export class LibrairieService {
@@ -121,21 +131,13 @@ export class LibrairieService {
 				coverImage: createLibrairieDto.coverKey ?? null,
 				pageCount,
 			},
-			include: {
-				uploadedBy: {
-					select: {
-						id: true,
-						fullname: true,
-						email: true,
-					},
-				},
-			},
+			include: {uploadedBy: UPLOADED_BY_SELECT},
 		});
 
 		return this.documentToDto(document);
 	}
 
-	async findAll(search: SearchDocumentDto): Promise<PaginatedResponse<DocumentResponseDto>> {
+	async findAll(search: SearchDocumentDto): Promise<PaginatedResponseDto<DocumentResponseDto>> {
 		const {limit = 10, page = 1} = search;
 
 		const where = {
@@ -151,15 +153,7 @@ export class LibrairieService {
 		// Récupérer les documents paginés
 		const documents = await this.prisma.document.findMany({
 			where,
-			include: {
-				uploadedBy: {
-					select: {
-						id: true,
-						fullname: true,
-						email: true,
-					},
-				},
-			},
+			include: {uploadedBy: UPLOADED_BY_SELECT},
 			orderBy: {
 				uploadedAt: 'desc',
 			},
@@ -183,15 +177,7 @@ export class LibrairieService {
 	async findOne(id: string): Promise<DocumentResponseDto> {
 		const document = await this.prisma.document.findUnique({
 			where: {id},
-			include: {
-				uploadedBy: {
-					select: {
-						id: true,
-						fullname: true,
-						email: true,
-					},
-				},
-			},
+			include: {uploadedBy: UPLOADED_BY_SELECT},
 		});
 
 		if (!document) {
@@ -201,7 +187,7 @@ export class LibrairieService {
 		return this.documentToDto(document);
 	}
 
-	async findAllPublic(search: SearchDocumentDto): Promise<PaginatedResponse<PublicDocumentResponseDto>> {
+	async findAllPublic(search: SearchDocumentDto): Promise<PaginatedResponseDto<PublicDocumentResponseDto>> {
 		const {limit = 10, page = 1} = search;
 
 		const where = {
@@ -225,20 +211,8 @@ export class LibrairieService {
 			take: limit,
 		});
 
-		const backendUrl = this.getBackendUrl();
 		return {
-			data: documents.map(doc => ({
-				id: doc.id,
-				title: doc.title,
-				description: doc.description,
-				categorie: doc.categorie,
-				fileType: doc.fileType,
-				fileUrl: `${backendUrl}/api/v1/librairie/${doc.id}/file`,
-				coverImage: doc.coverImage ? this.r2Service.getPublicUrl(doc.coverImage) : null,
-				pageCount: doc.pageCount,
-				uploadedAt: doc.uploadedAt,
-				auteur: doc.uploadedBy?.fullname ?? '',
-			})),
+			data: documents.map(doc => this.publicDocumentToDto(doc)),
 			meta: {
 				total,
 				page,
@@ -264,6 +238,11 @@ export class LibrairieService {
 			throw new NotFoundException(`Document avec l'ID ${id} non trouvé`);
 		}
 
+		return this.publicDocumentToDto(document);
+	}
+
+	/** Met en forme la vue publique (sans données sensibles) d'un document. */
+	private publicDocumentToDto(document: any): PublicDocumentResponseDto {
 		const backendUrl = this.getBackendUrl();
 		return {
 			id: document.id,
@@ -330,15 +309,7 @@ export class LibrairieService {
 				description: updateLibrairieDto.description ?? document.description,
 				categorie: updateLibrairieDto.categorie ?? document.categorie,
 			},
-			include: {
-				uploadedBy: {
-					select: {
-						id: true,
-						fullname: true,
-						email: true,
-					},
-				},
-			},
+			include: {uploadedBy: UPLOADED_BY_SELECT},
 		});
 
 		return this.documentToDto(updatedDocument);
@@ -411,6 +382,11 @@ export class LibrairieService {
 			coverImage: document.coverImage ? this.r2Service.getPublicUrl(document.coverImage) : null,
 			pageCount: document.pageCount,
 			uploadedAt: document.uploadedAt,
+			// `uploadedBy` est une relation optionnelle (Document.uploadedById est
+			// nullable) : on accède aux champs un par un plutôt que de repasser
+			// l'objet tel quel, pour ne pas transformer silencieusement l'échec
+			// actuel (accès à une propriété de null) en réponse 200 à uploadedBy
+			// null.
 			uploadedBy: {
 				id: document.uploadedBy.id,
 				fullname: document.uploadedBy.fullname,

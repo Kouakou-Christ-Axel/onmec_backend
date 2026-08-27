@@ -38,7 +38,7 @@ describe('ActualitesService', () => {
 
   // Accès aux méthodes privées via cast, pour tester la logique pure.
   const mapImageUrl = (svc: ActualitesService, imageUrl: string | null) =>
-    (svc as any).mapToEntity({ imageUrl }).imageUrl;
+    (svc as any).withPublicImageUrl({ imageUrl }).imageUrl;
 
   const visibility = (svc: ActualitesService, actor?: AuthenticatedActor) =>
     (svc as any).visibilityFilter(actor);

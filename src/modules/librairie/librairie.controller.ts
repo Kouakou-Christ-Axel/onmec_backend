@@ -15,6 +15,7 @@ import {
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiExtraModels,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -36,11 +37,13 @@ import { AdminRole } from '../../generated/prisma/client';
 import { Request } from 'express';
 import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
 import { SearchDocumentDto } from './dto/search-document.dto';
+import { PaginatedResponseDto } from 'src/common/dto/paginated-response.dto';
 
 /** Rôles éditoriaux : gestion de la librairie de documents depuis le back-office. */
 const EDITORIAL = [AdminRole.ADMIN_NATIONAL, AdminRole.CHARGE_COMMUNICATION];
 
 @ApiTags('Librairie')
+@ApiExtraModels(PaginatedResponseDto)
 @Controller('librairie')
 export class LibrairieController {
   constructor(private readonly librairieService: LibrairieService) {}
