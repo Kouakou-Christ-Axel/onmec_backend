@@ -10,7 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { User } from '../../generated/prisma/client';
+import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
 import {
   ApiBearerAuth,
   ApiOkResponse,
@@ -19,6 +19,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AdminGuard } from '../auth/guards/admin.guard';
 import { GamificationService } from './gamification.service';
 import { AddPointsDto } from './dto/add-points.dto';
 import { LeaderboardQueryDto } from './dto/leaderboard-query.dto';
@@ -43,22 +44,28 @@ export class GamificationController {
   @ApiOkResponse({ description: 'État de gamification', type: GamificationStateDto })
   @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Non authentifié' })
   getMe(@Req() req: Request) {
-    const user = req.user as User;
+    const user = req.user as AuthenticatedActor;
     return this.gamificationService.getEtat(user.id);
   }
 
+  // Mitigation immediate : cet endpoint accepte `points` et `raison` du client.
+  // Laisse ouvert a tout membre authentifie, il permettait a n'importe qui de
+  // s'attribuer un nombre arbitraire de points. L'attribution devrait etre
+  // derivee des actions reelles (like, commentaire, quiz) cote serveur ; en
+  // attendant ce chantier, on le reserve au back-office.
   @Post('points')
+  @UseGuards(AdminGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: "Attribuer des points à l'utilisateur",
+    summary: 'Attribuer des points à un membre (back-office)',
     description:
-      "Ajoute des points à l'utilisateur authentifié, journalise la transaction et retourne l'état mis à jour.",
+      "Ajoute des points au membre ciblé, journalise la transaction et retourne l'état mis à jour. Réservé aux comptes back-office.",
   })
   @ApiOkResponse({ description: 'État de gamification mis à jour', type: GamificationStateDto })
   @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Non authentifié' })
-  addPoints(@Body() dto: AddPointsDto, @Req() req: Request) {
-    const user = req.user as User;
-    return this.gamificationService.ajouterPoints(user.id, dto);
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Réservé au back-office' })
+  addPoints(@Body() dto: AddPointsDto) {
+    return this.gamificationService.ajouterPoints(dto.userId, dto);
   }
 
   @Get('leaderboard')

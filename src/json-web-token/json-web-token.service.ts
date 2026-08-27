@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { JwtPayload } from 'src/common/types/authenticated-actor';
 
 @Injectable()
 export class JsonWebTokenService {
@@ -8,51 +9,47 @@ export class JsonWebTokenService {
   private readonly refreshSecret: string;
   private readonly tokenExpiration: string;
   private readonly refreshExpiration: string;
-  private readonly customerSecret: string;
-  private readonly customerExpiration: string;
+
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
   ) {
-    this.secret = this.configService.getOrThrow<string>('TOKEN_SECRET') ?? '';
+    this.secret = this.configService.getOrThrow<string>('TOKEN_SECRET');
     this.refreshSecret =
-      this.configService.getOrThrow<string>('REFRESH_TOKEN_SECRET') ?? '';
+      this.configService.getOrThrow<string>('REFRESH_TOKEN_SECRET');
+
+    // `getOrThrow` et non `get(...) ?? ''` : une chaine vide passee a
+    // `expiresIn` produit un token SANS expiration. Ces deux variables ont
+    // desormais un defaut (15m / 7d, voir src/config/env.validation.ts) : le
+    // `getOrThrow` ne sert plus a exiger le `.env`, il verifie que la couche
+    // de defauts a bien tourne. Ne pas le rabaisser en `get(...) ?? ...`.
     this.tokenExpiration =
-      this.configService.get<string>('TOKEN_EXPIRATION') ?? '';
-    this.refreshExpiration =
-      this.configService.get<string>('REFRESH_TOKEN_EXPIRATION') ?? '';
-    this.customerSecret =
-      this.configService.get<string>('CUSTOMER_TOKEN_SECRET') ?? '';
-    this.customerExpiration =
-      this.configService.get<string>('CUSTOMER_TOKEN_EXPIRATION') ?? '';
+      this.configService.getOrThrow<string>('TOKEN_EXPIRATION');
+    this.refreshExpiration = this.configService.getOrThrow<string>(
+      'REFRESH_TOKEN_EXPIRATION',
+    );
   }
 
-  // GENERATE TOKEN
-  async generateToken(userId: string) {
-    const payload = { sub: userId };
-
-    return await this.jwtService.signAsync(payload, {
+  async generateToken(payload: JwtPayload): Promise<string> {
+    return this.jwtService.signAsync(payload, {
       secret: this.secret,
       expiresIn: this.tokenExpiration,
     });
   }
 
-  // GENERATE REFRESH TOKEN
-  async generateRefreshToken(userId: string) {
-    const payload = { sub: userId };
-
-    return await this.jwtService.signAsync(payload, {
+  async generateRefreshToken(payload: JwtPayload): Promise<string> {
+    return this.jwtService.signAsync(payload, {
       secret: this.refreshSecret,
       expiresIn: this.refreshExpiration,
     });
   }
 
-  async verifyToken(token: string, type: 'user' | 'customer') {
+  async verifyToken(token: string): Promise<JwtPayload> {
     try {
-      return await this.jwtService.verifyAsync(token, {
-        secret: type === 'user' ? this.secret : this.customerSecret,
+      return await this.jwtService.verifyAsync<JwtPayload>(token, {
+        secret: this.secret,
       });
-    } catch (error) {
+    } catch {
       throw new UnauthorizedException('Token invalide');
     }
   }

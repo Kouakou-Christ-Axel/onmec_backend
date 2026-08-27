@@ -1,10 +1,20 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { UserRole } from '../../../generated/prisma/client';
 import { Transform } from 'class-transformer';
 import { IsNotEmpty, MaxLength, IsOptional, IsString } from 'class-validator';
+import { IsEmailField } from 'src/common/decorators/validation.decorators';
 
+/**
+ * Création d'un compte membre depuis le back-office.
+ *
+ * Ne porte PLUS de champ `role` : c'était le vecteur d'élévation de privilèges
+ * (via `UpdateUserDto extends PartialType(CreateUserDto)`), et les comptes
+ * back-office vivent désormais dans une table séparée.
+ *
+ * Ne porte plus non plus `address` : ce champ n'existe pas sur le modèle
+ * Prisma, il partait dans un spread vers `prisma.create` et faisait échouer
+ * la requête dès qu'il était renseigné.
+ */
 export class CreateUserDto {
-  // FULLNAME
   @ApiProperty({
     description: "Nom complet de l'utilisateur",
     example: 'Jean Dupont',
@@ -13,58 +23,30 @@ export class CreateUserDto {
   })
   @IsNotEmpty()
   @MaxLength(100)
-  @Transform(({ value }) => value.trim())
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   fullname: string;
 
-  // EMAIL
-  @ApiProperty({
-    description: "email de l'utilisateur",
-    example: 'Jean',
-    required: true,
-    maxLength: 100,
-  })
-  @IsNotEmpty()
-  @MaxLength(100)
-  @Transform(({ value }) => value.trim())
+  @IsEmailField("Email de l'utilisateur")
   email: string;
 
-  // PHONE
-  @ApiProperty({ description: 'Numéro de téléphone de l\'utilisateur', example: '+225070707070' })
-  // @IsPhoneNumber("CI", { message: 'Numéro de téléphone non valide, utilisez le format +225' })
+  @ApiProperty({
+    description: "Numéro de téléphone de l'utilisateur",
+    example: '+2250707070707',
+    required: false,
+  })
+  @IsOptional()
   @IsString()
-  @Transform(({ value }) => value.trim())
-  phone: string;
+  @MaxLength(20)
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  phone?: string;
 
-  // IMAGE
   @ApiProperty({
-    description: "Image de l'utilisateur",
+    description:
+      "Clé R2 de l'avatar, obtenue via une demande d'URL présignée préalable (POST /users/avatar/upload-url)",
     required: false,
-    type: "file" as "string",
+    example: 'users-avatar/1732000000000.jpg',
   })
   @IsOptional()
-  image?: string;
-
-  // ADDRESS
-  @ApiProperty({
-    description: "Adresse de l'utilisateur",
-    example: '123 rue du test',
-    required: false,
-    maxLength: 255,
-  })
-  @IsOptional()
-  @MaxLength(255)
-  @Transform(({ value }) => value.trim())
-  address: string;
-
-  // ROLE
-  @ApiProperty({
-    description: "le role de l'utilisateur",
-    example: 'ADMIN',
-    required: true,
-    maxLength: 100,
-  })
-  @IsNotEmpty()
-  @MaxLength(100)
-  @Transform(({ value }) => value.trim().toUpperCase() as UserRole)
-  role: UserRole;
+  @IsString()
+  avatarKey?: string;
 }

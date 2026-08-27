@@ -48,7 +48,7 @@ export class GenerateDataService {
         return "image_" + (new Date().getTime());
     }
 
-    static async generateSecureImageName(name: string): Promise<string> {
+    static async generateSecureImageName(_name: string): Promise<string> {
         return GenerateDataService.generateImageName();
     }
 

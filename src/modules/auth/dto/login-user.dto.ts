@@ -1,28 +1,20 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsNotEmpty, Matches, MaxLength } from 'class-validator';
+import { IsNotEmpty } from 'class-validator';
+import { IsEmailField } from 'src/common/decorators/validation.decorators';
 
 export class LoginUserDto {
-  // EMAIL
-  @ApiProperty({
-    description: "email de l'utilisateur",
-    example: 'jean@gmail.com',
-    required: true,
-    maxLength: 100,
-  })
-  @IsNotEmpty()
-  @MaxLength(100)
-  @Transform(({ value }) => value.trim())
+  @IsEmailField("Email du compte membre")
   email: string;
 
-  // PASSWORD
+  // Pas de contrainte de format ici : la politique s'applique a la creation,
+  // pas a la connexion. Un ancien mot de passe plus court doit rester utilisable.
   @ApiProperty({
-    description: "mot de passe de l'utilisateur",
-    example: 'Password01@',
+    description: 'Mot de passe',
+    example: 'MonMotDePasse!2026',
     required: true,
-    maxLength: 100,
   })
   @IsNotEmpty()
-  @Transform(({ value }) => value?.trim())
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   password: string;
 }

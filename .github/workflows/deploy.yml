@@ -11,6 +11,25 @@ jobs:
     name: CI
     runs-on: ubuntu-latest
 
+    # Base jetable pour le contrôle de dérive : `migrate diff --from-migrations`
+    # rejoue tout l'historique des migrations dans une base fantôme, il lui en
+    # faut donc une. Aucune autre étape n'en dépend — les tests unitaires ont
+    # toutes leurs dépendances mockées.
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: shadow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,6 +59,53 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit
 
+      # Le dépôt embarquait les dépendances ESLint 9 sans fichier de
+      # configuration : `pnpm lint` échouait donc systématiquement et rien
+      # n'était linté. Variante sans `--fix` : une CI ne doit pas réécrire le
+      # code qu'elle vérifie.
+      - name: Lint
+        run: pnpm lint:check
+
+      # Les tests ne touchaient pas la CI. Les trois régressions introduites
+      # pendant le chantier admin/membre n'ont été rattrapées que par des
+      # exécutions locales — sans cette étape, elles partaient en production.
+      # Toutes les dépendances des specs sont mockées : aucune base requise.
+      - name: Unit tests
+        run: pnpm test
+
+      # Vérifie que le schéma Prisma et les migrations ne divergent pas. Une
+      # dérive ne casse ni le type check ni les tests, mais fait échouer le
+      # `migrate deploy` du job suivant, une fois sur le VPS.
+      - name: Migration drift check
+        run: |
+          set -o pipefail
+          # `set -e` interromprait le script avant le diagnostic : on capture
+          # le code de sortie pour distinguer « la commande a échoué » de
+          # « le schéma diverge ». Confondre les deux avait produit un message
+          # trompeur au premier passage, annonçant une dérive là où il
+          # manquait seulement la base fantôme.
+          set +e
+          DIFF=$(pnpm exec prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema prisma/schema.prisma --script 2>&1)
+          CODE=$?
+          set -e
+          echo "$DIFF"
+          if [ $CODE -ne 0 ]; then
+            echo "::error::Le contrôle de dérive n'a pas pu s'exécuter (code $CODE)."
+            exit 1
+          fi
+          if ! echo "$DIFF" | grep -q "This is an empty migration"; then
+            echo "::error::Le schéma Prisma diverge des migrations."
+            exit 1
+          fi
+        env:
+          DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
+          SHADOW_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/shadow?schema=public
+
+      - name: Build
+        run: pnpm build
+
   migrate:
     name: Migrate & Seed
     needs: ci
@@ -56,6 +122,9 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           command_timeout: 10m
           script_stop: true
+          # `appleboy/ssh-action` n'herite pas de l'environnement du runner :
+          # ces deux variables doivent etre transferees explicitement.
+          envs: NODE_ENV,SEED_ADMIN_PASSWORD
           script: |
             set -e
             export NVM_DIR="$HOME/.nvm"
@@ -70,6 +139,20 @@ jobs:
             pnpm exec prisma generate
             pnpm exec prisma migrate deploy
             pnpm exec prisma db seed
+        # Le seed decide de son comportement sur NODE_ENV : sans cette variable,
+        # il se croit en developpement et insere les donnees de demonstration —
+        # dont des comptes dont le mot de passe est litteralement « password » —
+        # puis cree les trois comptes back-office avec le mot de passe de repli
+        # ecrit dans le depot. Le `.env` du serveur peut la porter, mais rien ne
+        # le garantit : on la pose ici pour ne pas en dependre.
+        #
+        # SEED_ADMIN_PASSWORD vient d'un secret GitHub. S'il est absent ET
+        # qu'aucun compte back-office n'existe encore, le seed echoue — c'est
+        # voulu : mieux vaut un deploiement rouge qu'un administrateur national
+        # dont le mot de passe est public.
+        env:
+          NODE_ENV: production
+          SEED_ADMIN_PASSWORD: ${{ secrets.SEED_ADMIN_PASSWORD }}
 
   deploy:
     name: Deploy

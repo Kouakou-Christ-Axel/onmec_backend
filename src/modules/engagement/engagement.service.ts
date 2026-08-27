@@ -4,7 +4,15 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { User, UserRole } from '../../generated/prisma/client';
+import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
+import { PointSource, Prisma } from '../../generated/prisma/client';
+import { isPrismaError } from '../../common/utils/prisma-error';
+import { GamificationService } from '../gamification/gamification.service';
+import { BAREME } from '../gamification/points-bareme';
+import {
+  NOTIFICATION_TYPE,
+  NotificationService,
+} from '../notification/notification.service';
 import { PrismaService } from '../../database/services/prisma.service';
 import { CreateCommentaireDto } from './dto/create-commentaire.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
@@ -25,7 +33,11 @@ export type EngagementTarget = 'signalement' | 'actualite';
 export class EngagementService {
   private readonly logger = new Logger(EngagementService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly gamification: GamificationService,
+    private readonly notifications: NotificationService,
+  ) {}
 
   /**
    * Construit le filtre Prisma ciblant soit un signalement, soit une actualité.
@@ -49,8 +61,12 @@ export class EngagementService {
         throw new NotFoundException(`Signalement avec l'id ${targetId} introuvable`);
       }
     } else {
-      const exists = await this.prisma.actualite.findUnique({
-        where: { id: targetId },
+      // Point d'entree distinct de ActualitesService : ce controleur partage le
+      // chemin `actualites` et expose GET :id/commentaires publiquement. Sans
+      // ce filtre, un brouillon reste likeable et ses commentaires lisibles
+      // par quiconque connait son identifiant.
+      const exists = await this.prisma.actualite.findFirst({
+        where: { id: targetId, deletedAt: null, statut: 'PUBLIEE' },
         select: { id: true },
       });
       if (!exists) {
@@ -60,8 +76,36 @@ export class EngagementService {
   }
 
   /**
-   * Active ou désactive le like d'un utilisateur sur une cible (idempotent grâce à
-   * la contrainte d'unicité userId + cible).
+   * Clé unique composée ciblant la réaction d'un membre sur un contenu donné.
+   * Adossée aux contraintes `@@unique([userId, signalementId])` et
+   * `@@unique([userId, actualiteId])` du modèle Reaction.
+   */
+  private reactionKey(
+    target: EngagementTarget,
+    targetId: string,
+    userId: string,
+  ): Prisma.ReactionWhereUniqueInput {
+    return target === 'signalement'
+      ? { userId_signalementId: { userId, signalementId: targetId } }
+      : { userId_actualiteId: { userId, actualiteId: targetId } };
+  }
+
+  /**
+   * Active ou désactive le like d'un utilisateur sur une cible.
+   *
+   * La version précédente lisait la réaction puis créait ou supprimait selon le
+   * résultat : deux requêtes concurrentes du même membre (double tap, retry
+   * réseau) passaient toutes deux par la branche « pas de réaction » et l'une
+   * des deux échouait en 500 sur la contrainte d'unicité.
+   *
+   * On attaque donc directement la base par la clé unique et on se laisse
+   * guider par le résultat : la suppression fait autorité si elle touche une
+   * ligne (P2025 = il n'y en avait pas), et une création concurrente (P2002)
+   * signifie que quelqu'un d'autre a déjà posé le like — état final identique,
+   * donc succès.
+   *
+   * `likesCount` reste une lecture postérieure : elle reflète l'état de la
+   * table au moment du comptage, pas un instantané transactionnel du toggle.
    */
   async toggleReaction(
     target: EngagementTarget,
@@ -70,17 +114,37 @@ export class EngagementService {
   ): Promise<ReactionToggleResponseDto> {
     await this.ensureTargetExists(target, targetId);
 
-    const where = { userId, ...this.targetWhere(target, targetId) };
-
-    const existing = await this.prisma.reaction.findFirst({ where });
+    const key = this.reactionKey(target, targetId, userId);
 
     let liked: boolean;
-    if (existing) {
-      await this.prisma.reaction.delete({ where: { id: existing.id } });
+    try {
+      await this.prisma.reaction.delete({ where: key });
       liked = false;
-    } else {
-      await this.prisma.reaction.create({ data: where });
+    } catch (error) {
+      if (!isPrismaError(error, 'P2025')) throw error;
+
+      // Aucune réaction à supprimer : on pose le like.
+      try {
+        await this.prisma.reaction.create({
+          data: { userId, ...this.targetWhere(target, targetId) },
+        });
+      } catch (createError) {
+        if (!isPrismaError(createError, 'P2002')) throw createError;
+        // Course concurrente : le like a été posé entre-temps. Rien à faire.
+      }
       liked = true;
+    }
+
+    if (liked) {
+      // Idempotent cote gamification : le sourceId est la cible, donc unliker
+      // puis reliker ne recredite pas.
+      await this.gamification.attribuerSansEchouer({
+        userId,
+        source: PointSource.LIKE,
+        sourceId: targetId,
+        points: BAREME.LIKE,
+        raison: `like:${target}`,
+      });
     }
 
     const likesCount = await this.prisma.reaction.count({
@@ -148,7 +212,49 @@ export class EngagementService {
       },
     });
 
+    // Chaque commentaire porte un identifiant different : l'idempotence ne
+    // borne donc rien ici, c'est le plafond quotidien de la source COMMENTAIRE
+    // qui rend le spam sans interet.
+    await this.gamification.attribuerSansEchouer({
+      userId,
+      source: PointSource.COMMENTAIRE,
+      sourceId: commentaire.id,
+      points: BAREME.COMMENTAIRE,
+      raison: `commentaire:${target}`,
+    });
+
+    await this.notifierAuteurDuSignalement(target, targetId, userId);
+
     return this.mapCommentaire(commentaire);
+  }
+
+  /**
+   * Previent le citoyen qu'on a commente son signalement.
+   *
+   * Deux garde-fous : on ne notifie pas un signalement anonyme, faute de
+   * destinataire, et on ne notifie pas quelqu'un de son propre commentaire.
+   */
+  private async notifierAuteurDuSignalement(
+    target: EngagementTarget,
+    targetId: string,
+    auteurDuCommentaire: string,
+  ): Promise<void> {
+    if (target !== 'signalement') return;
+
+    const signalement = await this.prisma.signalementCitoyen.findUnique({
+      where: { id: targetId },
+      select: { id: true, titre: true, citoyenId: true },
+    });
+
+    if (!signalement?.citoyenId) return;
+    if (signalement.citoyenId === auteurDuCommentaire) return;
+
+    await this.notifications.notifierMembre(signalement.citoyenId, {
+      type: NOTIFICATION_TYPE.SIGNALEMENT_COMMENTAIRE,
+      title: 'Nouveau commentaire',
+      body: `Quelqu'un a commenté « ${signalement.titre} ».`,
+      lien: `/signalements/${signalement.id}`,
+    });
   }
 
   /**
@@ -159,7 +265,7 @@ export class EngagementService {
     target: EngagementTarget,
     targetId: string,
     commentaireId: string,
-    user: User,
+    user: AuthenticatedActor,
   ): Promise<void> {
     const commentaire = await this.prisma.commentaire.findUnique({
       where: { id: commentaireId },
@@ -179,7 +285,8 @@ export class EngagementService {
     }
 
     const isOwner = commentaire.userId === user.id;
-    const isAdmin = user.role === UserRole.ADMIN;
+    // Les trois roles back-office moderent les commentaires.
+    const isAdmin = user.type === 'admin';
     if (!isOwner && !isAdmin) {
       throw new ForbiddenException(
         'Vous ne pouvez supprimer que vos propres commentaires',
@@ -269,6 +376,18 @@ export class EngagementService {
         actualite: { select: { id: true, title: true } },
       },
     });
+
+    // On previent a la mise sous silence, pas au retablissement : demasquer un
+    // commentaire, c'est revenir sur une decision, pas notifier son auteur.
+    // `userId` est bien celui de l'auteur du commentaire, jamais celui du
+    // moderateur : `Notification.userId` reference la table des membres.
+    if (masque) {
+      await this.notifications.notifierMembre(commentaire.userId, {
+        type: NOTIFICATION_TYPE.COMMENTAIRE_MODERE,
+        title: 'Votre commentaire a été masqué',
+        body: 'Un modérateur a masqué un de vos commentaires.',
+      });
+    }
 
     return this.mapModerationCommentaire(commentaire);
   }

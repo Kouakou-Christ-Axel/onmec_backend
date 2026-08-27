@@ -1,21 +1,36 @@
-import {BadRequestException, Injectable, NotFoundException} from '@nestjs/common';
+import {BadRequestException, Injectable, Logger, NotFoundException} from '@nestjs/common';
 import {CreateSignalementCitoyenDto} from './dto/signalement-citoyen-dto/create-signalement-citoyen.dto';
 import {UpdateSignalementCitoyenDto} from './dto/signalement-citoyen-dto/update-signalement-citoyen.dto';
 import {SearchSignalementCitoyenDto} from './dto/signalement-citoyen-dto/search-signalement-citoyen.dto';
+import {UploadSignalementPhotoResponseDto} from './dto/signalement-citoyen-dto/upload-signalement-photo.dto';
 import {PrismaService} from '../../database/services/prisma.service';
-import {promises as fs} from 'fs';
-import * as path from 'path';
+import {extname} from 'path';
 import {PaginatedResponse} from './dto/signalement-citoyen-dto/paginated-response.dto';
-import {StatutSignalement} from "../../generated/prisma/client";
+import {PointSource, StatutSignalement} from "../../generated/prisma/client";
 import {EngagementService} from '../engagement/engagement.service';
+import {GamificationService} from '../gamification/gamification.service';
+import {BAREME} from '../gamification/points-bareme';
+import {
+	NOTIFICATION_TYPE,
+	NotificationService,
+} from '../notification/notification.service';
+import {GenerateDataService} from '../../common/services/generate-data.service';
+import {GenerateConfigService} from '../../common/services/generate-config.service';
+import {R2StorageService} from '../../common/services/r2-storage.service';
+
+/** Durée de validité des URL présignées d'upload de photo, en secondes. */
+const PHOTO_UPLOAD_EXPIRES_IN = 300;
 
 @Injectable()
 export class SignalementCitoyenService {
-	private readonly uploadDir = path.join(process.cwd(), 'uploads', 'signalements');
+	private readonly logger = new Logger(SignalementCitoyenService.name);
 
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly engagementService: EngagementService,
+		private readonly gamification: GamificationService,
+		private readonly notifications: NotificationService,
+		private readonly r2Service: R2StorageService,
 	) {
 	}
 
@@ -30,84 +45,97 @@ export class SignalementCitoyenService {
 	}
 
 	/**
-	 * Traite et sauvegarde un fichier photo
-	 * @param photoFile - Fichier Express.Multer.File
-	 * @returns L'URL relative du fichier sauvegardé ou null
+	 * Refuse une `photoKey` qui ne pointe pas vers le dossier des signalements.
+	 *
+	 * Sans ce garde-fou, un client pourrait fournir la clé générée pour un
+	 * autre module (actualités, librairie, avatars…), ou une valeur
+	 * arbitraire n'importe où dans le bucket.
 	 */
-	private async processPhotoFile(photoFile: Express.Multer.File): Promise<string | null> {
-		if (!photoFile) {
-			return null;
-		}
-
-		try {
-			// Créer le répertoire s'il n'existe pas
-			await fs.mkdir(this.uploadDir, {recursive: true});
-
-			// Générer un nom de fichier unique
-			const timestamp = Date.now();
-			const fileExt = this.getFileExtension(photoFile.originalname);
-			const fileName = `signalement-${timestamp}${fileExt}`;
-			const filePath = path.join(this.uploadDir, fileName);
-
-			// Déplacer le fichier du répertoire temporaire au répertoire final
-			await fs.rename(photoFile.path, filePath);
-
-			// Retourner le chemin relatif
-			return `/uploads/signalements/${fileName}`;
-		} catch (error) {
+	private assertPhotoKey(photoKey?: string) {
+		if (photoKey === undefined) return;
+		if (!photoKey.startsWith('signalements/')) {
 			throw new BadRequestException(
-				`Erreur lors du traitement de la photo: ${error.message}`,
+				"photoKey doit être une clé générée par POST /signalement-citoyen/upload-url",
 			);
 		}
 	}
 
 	/**
-	 * Supprime une photo existante
-	 * @param photoPath - Chemin relatif de la photo à supprimer
+	 * Extrait la clé objet R2 depuis la valeur stockée en base, si elle en a
+	 * la forme.
+	 *
+	 * Les signalements créés avant cette migration portent encore un chemin
+	 * `/uploads/signalements/...` ; certains peuvent même porter une valeur
+	 * antérieure non reconnaissable. Dans les deux cas, on ignore la
+	 * suppression plutôt que d'échouer : une photo déjà remplacée en base ne
+	 * doit jamais faire échouer la requête à cause d'un objet R2 orphelin ou
+	 * inexistant.
 	 */
-	private async deletePhotoFile(photoPath: string | null): Promise<void> {
-		if (!photoPath) {
-			return;
-		}
+	private extractPhotoKey(photo: string): string | null {
+		const key = photo.replace(/^\/?uploads\//, '');
+		return key.startsWith('signalements/') ? key : null;
+	}
+
+	/** Suppression best-effort : l'échec ne doit pas faire échouer la requête. */
+	private async deleteOldPhoto(photo: string) {
+		const key = this.extractPhotoKey(photo);
+		if (!key) return;
 
 		try {
-			const fullPath = path.join(process.cwd(), photoPath);
-			await fs.unlink(fullPath);
+			await this.r2Service.delete(key);
 		} catch (error) {
-			console.warn(`Impossible de supprimer la photo: ${error.message}`);
+			this.logger.warn(
+				`Impossible de supprimer la photo R2 ${key}: ${(error as Error).message}`,
+			);
 		}
 	}
 
-	/**
-	 * Extrait l'extension d'un nom de fichier
-	 * @param filename - Nom du fichier
-	 * @returns Extension du fichier (ex: .jpg)
-	 */
-	private getFileExtension(filename: string): string {
-		return path.extname(filename);
+	/** Remplace la clé R2 stockée par son URL publique dans une réponse. */
+	private mapSignalement<T extends {photo?: string | null}>(signalement: T): T {
+		if (!signalement.photo) return signalement;
+		return {...signalement, photo: this.r2Service.getPublicUrl(signalement.photo)};
+	}
+
+	/** Génère une URL présignée pour la photo d'un signalement. */
+	async buildPhotoUploadUrl(
+		filename: string,
+		contentType: string,
+	): Promise<UploadSignalementPhotoResponseDto> {
+		if (!filename.match(GenerateConfigService.ALLOWED_IMAGE_EXT)) {
+			throw new BadRequestException(
+				'Seuls les fichiers image sont acceptés (jpg, jpeg, png, gif, webp, heic, heif)',
+			);
+		}
+
+		const ext = extname(filename);
+		const name = await GenerateDataService.generateSecureImageName(filename);
+		const key = `signalements/${name}${ext}`;
+		const uploadUrl = await this.r2Service.getUploadUrl(
+			key,
+			contentType,
+			PHOTO_UPLOAD_EXPIRES_IN,
+		);
+
+		return {key, uploadUrl, expiresIn: PHOTO_UPLOAD_EXPIRES_IN};
 	}
 
 	/**
 	 * Crée un nouveau signalement citoyen
-	 * @param createSignalementCitoyenDto - Données du signalement
-	 * @param files - Fichiers uploadés (tableau)
+	 * @param createSignalementCitoyenDto - Données du signalement, avec une
+	 *   éventuelle photoKey R2 obtenue via POST /signalement-citoyen/upload-url
 	 */
-	async create(
-		createSignalementCitoyenDto: CreateSignalementCitoyenDto,
-		files?: Express.Multer.File[],
-	) {
+	async create(createSignalementCitoyenDto: CreateSignalementCitoyenDto) {
+		this.assertPhotoKey(createSignalementCitoyenDto.photoKey);
+
 		try {
-			// Traiter le fichier photo s'il y en a
-			const photoUrl = files && files.length > 0
-				? await this.processPhotoFile(files[0])
-				: null;
+			const {photoKey, ...data} = createSignalementCitoyenDto;
 
 			// Créer le signalement avec la photo
-			return await this.prisma.signalementCitoyen.create({
+			const signalement = await this.prisma.signalementCitoyen.create({
 				data: {
-					...createSignalementCitoyenDto,
+					...data,
 					statut: StatutSignalement.NOUVEAU,
-					photo: photoUrl,
+					photo: photoKey ?? null,
 				},
 				include: {
 					categorie: true,
@@ -120,11 +148,21 @@ export class SignalementCitoyenService {
 					},
 				},
 			});
-		} catch (error) {
-			// Nettoyer les fichiers uploadés en cas d'erreur
-			if (files && files.length > 0) {
-				await this.deletePhotoFile(files[0].path);
+
+			// Un signalement peut être anonyme : pas de citoyen, donc personne à
+			// créditer.
+			if (signalement.citoyenId) {
+				await this.gamification.attribuerSansEchouer({
+					userId: signalement.citoyenId,
+					source: PointSource.SIGNALEMENT_DEPOSE,
+					sourceId: signalement.id,
+					points: BAREME.SIGNALEMENT_DEPOSE,
+					raison: 'signalement depose',
+				});
 			}
+
+			return this.mapSignalement(signalement);
+		} catch (error) {
 			throw new BadRequestException(
 				`Erreur lors de la création du signalement: ${error.message}`,
 			);
@@ -209,7 +247,7 @@ export class SignalementCitoyenService {
 			userId,
 		);
 
-		let data = signalements.map((s) => ({
+		let data = signalements.map((s) => this.mapSignalement({
 			...s,
 			...(stats.get(s.id) ?? {likesCount: 0, commentsCount: 0, likedByMe: false}),
 		}));
@@ -297,7 +335,7 @@ export class SignalementCitoyenService {
 			userId,
 		);
 
-		const data = signalements.map((s) => ({
+		const data = signalements.map((s) => this.mapSignalement({
 			...s,
 			...(stats.get(s.id) ?? {likesCount: 0, commentsCount: 0, likedByMe: false}),
 		}));
@@ -335,20 +373,21 @@ export class SignalementCitoyenService {
 				`Signalement citoyen avec l'id ${id} introuvable`,
 			);
 		}
-		return this.withEngagement(signalement, userId);
+		return this.mapSignalement(await this.withEngagement(signalement, userId));
 	}
 
 	/**
 	 * Met à jour un signalement existant
 	 * @param id - ID du signalement à mettre à jour
-	 * @param updateSignalementCitoyenDto - Données à mettre à jour
-	 * @param files - Fichiers uploadés (tableau)
+	 * @param updateSignalementCitoyenDto - Données à mettre à jour, avec une
+	 *   éventuelle nouvelle photoKey R2
 	 */
 	async update(
 		id: string,
 		updateSignalementCitoyenDto: UpdateSignalementCitoyenDto,
-		files?: Express.Multer.File[],
 	) {
+		this.assertPhotoKey(updateSignalementCitoyenDto.photoKey);
+
 		const signalement = await this.prisma.signalementCitoyen.findUnique({
 			where: {id},
 		});
@@ -360,23 +399,13 @@ export class SignalementCitoyenService {
 		}
 
 		try {
-			let photoUrl: string | null = null;
+			const {photoKey, ...data} = updateSignalementCitoyenDto;
 
-			// Traiter le nouveau fichier photo s'il y en a
-			if (files && files.length > 0) {
-				photoUrl = await this.processPhotoFile(files[0]);
-
-				// Supprimer l'ancienne photo si elle existe
-				if (signalement.photo) {
-					await this.deletePhotoFile(signalement.photo);
-				}
-			}
-
-			return await this.prisma.signalementCitoyen.update({
+			const misAJour = await this.prisma.signalementCitoyen.update({
 				where: {id},
 				data: {
-					...updateSignalementCitoyenDto,
-					...(photoUrl !== null && {photo: photoUrl}),
+					...data,
+					...(photoKey !== undefined && {photo: photoKey}),
 				},
 				include: {
 					categorie: true,
@@ -389,11 +418,45 @@ export class SignalementCitoyenService {
 					},
 				},
 			});
-		} catch (error) {
-			// Nettoyer les fichiers uploadés en cas d'erreur
-			if (files && files.length > 0) {
-				await this.deletePhotoFile(files[0].path);
+
+			// L'ancien objet R2 n'etait jamais supprime : chaque remplacement de
+			// photo laissait un orphelin definitif dans le bucket.
+			if (photoKey !== undefined && signalement.photo) {
+				await this.deleteOldPhoto(signalement.photo);
 			}
+
+			// Bonus de validation : verse au passage de `validation` a vrai, et
+			// une seule fois. Le sourceId etant le signalement, devalider puis
+			// revalider ne recredite pas.
+			const vientDEtreValide = !signalement.validation && misAJour.validation;
+			if (vientDEtreValide && misAJour.citoyenId) {
+				await this.gamification.attribuerSansEchouer({
+					userId: misAJour.citoyenId,
+					source: PointSource.SIGNALEMENT_VALIDE,
+					sourceId: misAJour.id,
+					points: BAREME.SIGNALEMENT_VALIDE,
+					raison: 'signalement valide',
+				});
+			}
+
+			// Notification adossee au CHANGEMENT et non a l'appel : le
+			// back-office edite un signalement pour bien d'autres raisons
+			// (correction d'adresse, ajout de photo), et prevenir le citoyen a
+			// chaque enregistrement rendrait la notification insignifiante.
+			const statutChange = signalement.statut !== misAJour.statut;
+			if ((statutChange || vientDEtreValide) && misAJour.citoyenId) {
+				await this.notifications.notifierMembre(misAJour.citoyenId, {
+					type: NOTIFICATION_TYPE.SIGNALEMENT_STATUT,
+					title: 'Votre signalement a été mis à jour',
+					body: vientDEtreValide
+						? `« ${misAJour.titre} » a été validé.`
+						: `« ${misAJour.titre} » est désormais au statut ${misAJour.statut}.`,
+					lien: `/signalements/${misAJour.id}`,
+				});
+			}
+
+			return this.mapSignalement(misAJour);
+		} catch (error) {
 			throw new BadRequestException(
 				`Erreur lors de la mise à jour du signalement: ${error.message}`,
 			);
@@ -416,7 +479,7 @@ export class SignalementCitoyenService {
 
 		// Supprimer la photo si elle existe
 		if (signalement.photo) {
-			await this.deletePhotoFile(signalement.photo);
+			await this.deleteOldPhoto(signalement.photo);
 		}
 
 		return await this.prisma.signalementCitoyen.delete({where: {id}});

@@ -1,7 +1,8 @@
 import 'dotenv/config';
 import { PrismaClient } from '../../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import * as bcrypt from 'bcryptjs';
+import * as bcrypt from 'bcrypt';
+import { seedAdmins } from './seed-admins';
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -66,6 +67,20 @@ const ID = {
     a2: '31000000-0000-0000-0000-000000000002',
     a3: '31000000-0000-0000-0000-000000000003',
   },
+  categoriesActualite: {
+    // Categorie de repli posee par la migration
+    // 20260824180000_actualites_categories_tags : meme identifiant, sans quoi
+    // le seed en creerait un doublon.
+    generales: '20000000-0000-0000-0000-000000000001',
+    vieCitoyenne: '20000000-0000-0000-0000-000000000002',
+    infrastructure: '20000000-0000-0000-0000-000000000003',
+  },
+  tagsActualite: {
+    plateforme: '30000000-0000-0000-0000-000000000001',
+    participation: '30000000-0000-0000-0000-000000000002',
+    abidjan: '30000000-0000-0000-0000-000000000003',
+    voirie: '30000000-0000-0000-0000-000000000004',
+  },
   documents: {
     d1: '32000000-0000-0000-0000-000000000001',
     d2: '32000000-0000-0000-0000-000000000002',
@@ -80,47 +95,73 @@ const ID = {
 };
 
 async function main() {
+  // Les donnees de demonstration (comptes citoyens dont le mot de passe est
+  // litteralement « password », signalements et quiz fictifs) n'ont rien a
+  // faire en production. La CI rejoue pourtant ce seed a chaque deploiement.
+  //
+  // On n'echoue PAS pour autant : cela casserait le pipeline existant. On
+  // amorce uniquement les comptes back-office, qui eux sont legitimes en
+  // production, et on ignore le reste.
+  const isProduction = process.env.NODE_ENV === 'production';
+  const seedDemoData = !isProduction || process.env.ALLOW_PROD_SEED === '1';
+
   console.log('🌱 Seeding database...');
 
   const hash = await bcrypt.hash('password', await bcrypt.genSalt());
 
+  // ADMINS (back-office) — amorces dans tous les environnements
+  const admins = await seedAdmins(prisma);
+
+  if (!seedDemoData) {
+    console.log(
+      'ℹ️  Production : donnees de demonstration ignorees. ' +
+        'Definir ALLOW_PROD_SEED=1 pour les forcer.',
+    );
+    return;
+  }
+
+  if (!admins) {
+    throw new Error(
+      'Amorcage des admins ignore : impossible de rattacher les quiz et documents de demonstration.',
+    );
+  }
+
   // ── USERS ────────────────────────────────────────────────────────────────────
   // Upsert by email (unique). If user already exists with a random UUID (created
   // via the API), we keep their real ID and capture it for use in FK references below.
-  const admin = await prisma.user.upsert({
+  // Prefixe par _ : cree pour lui-meme (compte de demonstration), son
+  // identifiant n'est reference nulle part ailleurs dans le seed.
+  const _admin = await prisma.member.upsert({
     where: { email: 'admin@agence.ci' },
     update: { emailVerified: true },
     create: {
       fullname: 'Admin Principal',
       email: 'admin@agence.ci',
       password: hash,
-      role: 'ADMIN',
       phone: '+2250101010101',
       emailVerified: true,
     },
   });
 
-  const member1 = await prisma.user.upsert({
+  const member1 = await prisma.member.upsert({
     where: { email: 'kouame.jean@citoyen.ci' },
     update: { emailVerified: true },
     create: {
       fullname: 'Kouamé Jean',
       email: 'kouame.jean@citoyen.ci',
       password: hash,
-      role: 'MEMBER',
       phone: '+2250707070701',
       emailVerified: true,
     },
   });
 
-  const member2 = await prisma.user.upsert({
+  const member2 = await prisma.member.upsert({
     where: { email: 'aya.fatou@citoyen.ci' },
     update: { emailVerified: true },
     create: {
       fullname: 'Aya Fatou',
       email: 'aya.fatou@citoyen.ci',
       password: hash,
-      role: 'MEMBER',
       phone: '+2250707070702',
       emailVerified: true,
     },
@@ -196,7 +237,7 @@ async function main() {
       title: 'Les bases de la citoyenneté',
       description: 'Testez vos connaissances sur les droits et devoirs fondamentaux du citoyen ivoirien.',
       difficulte: 'FACILE',
-      authorId: admin.id,
+      authorId: admins.national.id,
       categorieId: ID.catQuiz.civique,
     },
   });
@@ -209,7 +250,7 @@ async function main() {
       title: 'Histoire et institutions de la RCI',
       description: "Quiz sur les grandes dates, les symboles et les institutions de la Côte d'Ivoire.",
       difficulte: 'MOYEN',
-      authorId: admin.id,
+      authorId: admins.national.id,
       categorieId: ID.catQuiz.histoire,
     },
   });
@@ -280,24 +321,56 @@ async function main() {
 
   console.log('✅ Signalements citoyens seeded');
 
+  // ── CATEGORIES ET TAGS D'ACTUALITE ────────────────────────────────────────────
+  const categoriesActualiteData = [
+    { id: ID.categoriesActualite.generales, nom: 'Actualités générales', slug: 'actualites-generales', description: 'Catégorie de repli des actualités antérieures au classement éditorial.' },
+    { id: ID.categoriesActualite.vieCitoyenne, nom: 'Vie citoyenne', slug: 'vie-citoyenne', description: 'Participation civique, droits et devoirs du citoyen.' },
+    { id: ID.categoriesActualite.infrastructure, nom: 'Infrastructure', slug: 'infrastructure', description: 'Routes, ponts, adduction d’eau et équipements publics.' },
+  ];
+
+  for (const c of categoriesActualiteData) {
+    await prisma.categorieActualite.upsert({ where: { id: c.id }, update: {}, create: c });
+  }
+
+  const tagsActualiteData = [
+    { id: ID.tagsActualite.plateforme, nom: 'Plateforme', slug: 'plateforme' },
+    { id: ID.tagsActualite.participation, nom: 'Participation', slug: 'participation' },
+    { id: ID.tagsActualite.abidjan, nom: 'Abidjan', slug: 'abidjan' },
+    { id: ID.tagsActualite.voirie, nom: 'Voirie', slug: 'voirie' },
+  ];
+
+  for (const t of tagsActualiteData) {
+    await prisma.tagActualite.upsert({ where: { id: t.id }, update: {}, create: t });
+  }
+
+  console.log("✅ Catégories et tags d’actualité seeded");
+
   // ── ACTUALITES ────────────────────────────────────────────────────────────────
   const actualitesData = [
-    { id: ID.actualites.a1, slug: 'lancement-plateforme-citoyenne-onmec', title: 'Lancement de la plateforme citoyenne Citoyen+', date: new Date('2025-01-15'), excerpt: 'La plateforme Citoyen+ ouvre ses portes pour connecter les citoyens ivoiriens à leurs institutions.', content: '<p>La plateforme numérique Citoyen+ a été officiellement lancée ce 15 janvier 2025.</p>', imageUrl: '/images/actualites/lancement-onmec.jpg' },
-    { id: ID.actualites.a2, slug: 'journee-nationale-citoyennete-2025', title: 'Journée nationale de la citoyenneté 2025', date: new Date('2025-03-10'), excerpt: "Le 10 mars, la Côte d'Ivoire célèbre la citoyenneté active et la participation civique.", content: "<p>À l'occasion de la Journée nationale de la citoyenneté, plusieurs activités sont organisées à travers le pays.</p>", imageUrl: '/images/actualites/journee-citoyennete.jpg' },
-    { id: ID.actualites.a3, slug: 'amelioration-voirie-abidjan-2025', title: "Programme d'amélioration de la voirie à Abidjan", date: new Date('2025-05-20'), excerpt: 'Le gouvernement annonce un vaste programme de réhabilitation des routes abidjanaises.', content: "<p>Dans le cadre du Plan National de Développement, le District d'Abidjan lance un programme pour la réhabilitation de plus de 200 km de voirie urbaine.</p>", imageUrl: '/images/actualites/voirie-abidjan.jpg' },
+    { id: ID.actualites.a1, slug: 'lancement-plateforme-citoyenne-onmec', title: 'Lancement de la plateforme citoyenne Citoyen+', date: new Date('2025-01-15'), excerpt: 'La plateforme Citoyen+ ouvre ses portes pour connecter les citoyens ivoiriens à leurs institutions.', content: '<p>La plateforme numérique Citoyen+ a été officiellement lancée ce 15 janvier 2025.</p>', imageUrl: '/images/actualites/lancement-onmec.jpg', categorieId: ID.categoriesActualite.vieCitoyenne, tagSlugs: ['plateforme', 'participation'] },
+    { id: ID.actualites.a2, slug: 'journee-nationale-citoyennete-2025', title: 'Journée nationale de la citoyenneté 2025', date: new Date('2025-03-10'), excerpt: "Le 10 mars, la Côte d'Ivoire célèbre la citoyenneté active et la participation civique.", content: "<p>À l'occasion de la Journée nationale de la citoyenneté, plusieurs activités sont organisées à travers le pays.</p>", imageUrl: '/images/actualites/journee-citoyennete.jpg', categorieId: ID.categoriesActualite.vieCitoyenne, tagSlugs: ['participation'] },
+    { id: ID.actualites.a3, slug: 'amelioration-voirie-abidjan-2025', title: "Programme d'amélioration de la voirie à Abidjan", date: new Date('2025-05-20'), excerpt: 'Le gouvernement annonce un vaste programme de réhabilitation des routes abidjanaises.', content: "<p>Dans le cadre du Plan National de Développement, le District d'Abidjan lance un programme pour la réhabilitation de plus de 200 km de voirie urbaine.</p>", imageUrl: '/images/actualites/voirie-abidjan.jpg', categorieId: ID.categoriesActualite.infrastructure, tagSlugs: ['abidjan', 'voirie'] },
   ];
 
   for (const a of actualitesData) {
-    await prisma.actualite.upsert({ where: { id: a.id }, update: {}, create: a });
+    const { tagSlugs, ...champs } = a;
+    await prisma.actualite.upsert({
+      where: { id: a.id },
+      update: {},
+      create: {
+        ...champs,
+        tags: { connect: tagSlugs.map((slug) => ({ slug })) },
+      },
+    });
   }
 
   console.log('✅ Actualités seeded');
 
   // ── DOCUMENTS ─────────────────────────────────────────────────────────────────
   const documentsData = [
-    { id: ID.documents.d1, title: "Constitution de la République de Côte d'Ivoire", description: 'Texte intégral de la Constitution ivoirienne révisée en 2016.', fileUrl: '/documents/constitution-ci-2016.pdf', fileType: 'pdf', uploadedById: admin.id },
-    { id: ID.documents.d2, title: 'Guide du citoyen ivoirien', description: 'Guide pratique sur les droits, devoirs et démarches administratives du citoyen.', fileUrl: '/documents/guide-citoyen-ci.pdf', fileType: 'pdf', uploadedById: admin.id },
-    { id: ID.documents.d3, title: 'Rapport annuel Citoyen+ 2024', description: 'Bilan des activités et signalements traités par la plateforme en 2024.', fileUrl: '/documents/rapport-onmec-2024.pdf', fileType: 'pdf', uploadedById: admin.id },
+    { id: ID.documents.d1, title: "Constitution de la République de Côte d'Ivoire", description: 'Texte intégral de la Constitution ivoirienne révisée en 2016.', fileUrl: '/documents/constitution-ci-2016.pdf', fileType: 'pdf', uploadedById: admins.national.id },
+    { id: ID.documents.d2, title: 'Guide du citoyen ivoirien', description: 'Guide pratique sur les droits, devoirs et démarches administratives du citoyen.', fileUrl: '/documents/guide-citoyen-ci.pdf', fileType: 'pdf', uploadedById: admins.national.id },
+    { id: ID.documents.d3, title: 'Rapport annuel Citoyen+ 2024', description: 'Bilan des activités et signalements traités par la plateforme en 2024.', fileUrl: '/documents/rapport-onmec-2024.pdf', fileType: 'pdf', uploadedById: admins.national.id },
   ];
 
   for (const d of documentsData) {
@@ -321,9 +394,14 @@ async function main() {
   console.log('✅ Notifications seeded');
 
   console.log('\n🎉 Seed terminé avec succès !');
-  console.log('   admin@agence.ci              (ADMIN)  — mot de passe: password');
-  console.log('   kouame.jean@citoyen.ci       (MEMBER) — mot de passe: password');
-  console.log('   aya.fatou@citoyen.ci         (MEMBER) — mot de passe: password');
+  console.log('\n   Back-office — mot de passe: SEED_ADMIN_PASSWORD (à changer à la 1re connexion) :');
+  console.log('   national@mec-ci.org          (ADMIN_NATIONAL)');
+  console.log('   communication@mec-ci.org     (CHARGE_COMMUNICATION)');
+  console.log('   moderation@mec-ci.org        (MODERATEUR)');
+  console.log('\n   Membres — mot de passe: password :');
+  console.log('   admin@agence.ci');
+  console.log('   kouame.jean@citoyen.ci');
+  console.log('   aya.fatou@citoyen.ci');
 }
 
 main()

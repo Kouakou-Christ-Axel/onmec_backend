@@ -12,7 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { User } from '../../generated/prisma/client';
+import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
 import {
   ApiBearerAuth,
   ApiOkResponse,
@@ -50,7 +50,7 @@ export class ActualiteEngagementController {
   @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Non authentifié' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Actualité non trouvée' })
   toggleReaction(@Param('id') id: string, @Req() req: Request) {
-    const user = req.user as User;
+    const user = req.user as AuthenticatedActor;
     return this.engagementService.toggleReaction('actualite', id, user.id);
   }
 
@@ -86,7 +86,7 @@ export class ActualiteEngagementController {
     @Body() dto: CreateCommentaireDto,
     @Req() req: Request,
   ) {
-    const user = req.user as User;
+    const user = req.user as AuthenticatedActor;
     return this.engagementService.createCommentaire('actualite', id, user.id, dto);
   }
 
@@ -110,7 +110,7 @@ export class ActualiteEngagementController {
     @Param('commentaireId') commentaireId: string,
     @Req() req: Request,
   ) {
-    const user = req.user as User;
+    const user = req.user as AuthenticatedActor;
     return this.engagementService.deleteOwnCommentaire(
       'actualite',
       id,

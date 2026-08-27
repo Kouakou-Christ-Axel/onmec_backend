@@ -33,6 +33,11 @@ async function bootstrap() {
 	app.useGlobalPipes(
 		new ValidationPipe({
 			whitelist: true,
+			// Refuse la requete au lieu de retirer silencieusement les champs
+			// inconnus. Sans cela, un PATCH /users portant {"role":"ADMIN"}
+			// passait la validation sans erreur ; seul le retrait du champ
+			// cote modele empechait l'elevation de privileges.
+			forbidNonWhitelisted: true,
 			transform: true,
 			transformOptions: {enableImplicitConversion: true},
 		}),

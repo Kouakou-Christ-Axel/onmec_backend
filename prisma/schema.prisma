@@ -10,42 +10,109 @@ datasource db {
   provider = "postgresql"
 }
 
-enum UserRole {
-  ADMIN
-  MEMBER
+// Rôles du back-office. Un admin porte exactement un rôle.
+enum AdminRole {
+  ADMIN_NATIONAL
+  CHARGE_COMMUNICATION
+  MODERATEUR
 }
 
-model User {
+// Cycle de vie d'un compte membre, distinct du soft-delete (`deletedAt`).
+enum StatutMembre {
+  ACTIF
+  SUSPENDU
+  BANNI
+}
+
+// Cloisonne les OTP : un code émis pour la vérification d'email ne peut pas
+// servir à réinitialiser un mot de passe (et réciproquement).
+enum OtpPurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+enum StatutActualite {
+  BROUILLON
+  PUBLIEE
+  ARCHIVEE
+}
+
+// Compte du back-office. Séparé des membres : cycle de vie, rôles et flux
+// d'authentification n'ont rien en commun.
+model Admin {
   id       String  @id @default(uuid()) @db.Uuid
   fullname String  @db.VarChar
   email    String  @unique @db.VarChar
   phone    String? @db.VarChar
   password String  @db.VarChar
 
-  role UserRole @default(MEMBER)
+  role AdminRole
 
-  emailVerified Boolean @default(false)
-  otpSecret     String? @db.VarChar
-
-  // Avatar (chemin/URL de la photo de profil, optionnel)
   avatar String? @db.VarChar
+
+  isActive           Boolean   @default(true)
+  mustChangePassword Boolean   @default(true)
+  lastLoginAt        DateTime?
+
+  otpSecret    String?     @db.VarChar
+  otpPurpose   OtpPurpose?
+  otpExpiresAt DateTime?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  Document           Document[]
+  actualites       Actualite[] @relation("ActualiteAuthor")
+  documents        Document[]
+  quizzes          Quiz[]      @relation("QuizAuthor")
+  membresSuspendus Member[]    @relation("MemberSuspendedBy")
+
+  @@index([role])
+  @@map("admins")
+}
+
+// Ancien modèle `User`, renommé. La table `users` est renommée en `members`
+// (ALTER TABLE ... RENAME), ce qui préserve les clés étrangères entrantes.
+model Member {
+  id       String  @id @default(uuid()) @db.Uuid
+  fullname String  @db.VarChar
+  email    String  @unique @db.VarChar
+  phone    String? @db.VarChar
+  password String  @db.VarChar
+
+  emailVerified Boolean @default(false)
+
+  otpSecret    String?     @db.VarChar
+  otpPurpose   OtpPurpose?
+  otpExpiresAt DateTime?
+
+  // Avatar (chemin/URL de la photo de profil, optionnel)
+  avatar String? @db.VarChar
+
+  // Modération du compte par un admin. Distinct de `deletedAt`, qui reste
+  // réservé à la suppression de compte.
+  statut           StatutMembre @default(ACTIF)
+  suspendedAt      DateTime?
+  suspensionRaison String?      @db.Text
+  suspendedById    String?      @db.Uuid
+  suspendedBy      Admin?       @relation("MemberSuspendedBy", fields: [suspendedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
   SignalementCitoyen SignalementCitoyen[]
   Notification       Notification[]
   DeviceToken        DeviceToken[]
   UserQuiz           UserQuiz[]
-  Quiz               Quiz[]               @relation("QuizAuthor")
   Reaction           Reaction[]
   Commentaire        Commentaire[]
   UserGamification   UserGamification?
   PointTransaction   PointTransaction[]
 
-  @@map("users")
+  @@index([statut])
+  @@index([deletedAt])
+  @@map("members")
 }
 
 model Document {
@@ -57,7 +124,8 @@ model Document {
   fileUrl      String // chemin local ou URL vers le fichier uploadé
   fileType     String // ex: "pdf", "docx", "epub"
   uploadedAt   DateTime @default(now())
-  uploadedBy   User?    @relation(fields: [uploadedById], references: [id])
+  // La librairie est alimentée depuis le back-office.
+  uploadedBy   Admin?   @relation(fields: [uploadedById], references: [id])
   uploadedById String?  @db.Uuid
 }
 
@@ -101,7 +169,7 @@ model SignalementCitoyen {
   statut StatutSignalement @default(NOUVEAU)
 
   citoyenId String? @db.Uuid
-  citoyen   User?   @relation(fields: [citoyenId], references: [id])
+  citoyen   Member? @relation(fields: [citoyenId], references: [id])
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -132,7 +200,7 @@ model CategorieQuiz {
   @@map("categories_quiz")
 }
 
-// Quiz créés par les utilisateurs
+// Quiz créés depuis le back-office
 model Quiz {
   id          String          @id @default(uuid()) @db.Uuid
   title       String
@@ -141,8 +209,9 @@ model Quiz {
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
-  authorId    String         @db.Uuid
-  author      User           @relation("QuizAuthor", fields: [authorId], references: [id])
+  // Nullable : un admin peut être supprimé sans détruire ses quiz.
+  authorId    String?        @db.Uuid
+  author      Admin?         @relation("QuizAuthor", fields: [authorId], references: [id])
   categorieId String?        @db.Uuid
   categorie   CategorieQuiz? @relation(fields: [categorieId], references: [id])
 
@@ -180,7 +249,10 @@ model UserQuiz {
   score       Int
   completedAt DateTime?
 
-  user    User         @relation(fields: [userId], references: [id])
+  // Cascade : l'historique de quiz d'un membre lui appartient. Sans elle, la
+  // suppression definitive d'un compte ayant passe un seul quiz echouait en
+  // RESTRICT, donc en 500 sur DELETE /users/delete/:id.
+  user    Member       @relation(fields: [userId], references: [id], onDelete: Cascade)
   quiz    Quiz         @relation(fields: [quizId], references: [id])
   answers UserAnswer[]
 }
@@ -192,22 +264,40 @@ model UserAnswer {
   questionId String @db.Uuid
   choiceId   String @db.Uuid
 
-  userQuiz UserQuiz @relation(fields: [userQuizId], references: [id])
+  // Second maillon de la meme chaine : sans lui, la cascade sur UserQuiz
+  // butait a son tour sur les reponses.
+  userQuiz UserQuiz @relation(fields: [userQuizId], references: [id], onDelete: Cascade)
   question Question @relation(fields: [questionId], references: [id])
   choice   Choice   @relation(fields: [choiceId], references: [id])
 }
 
-// Notifications pour les utilisateurs
+// Notifications pour les membres
+// Fil de notifications in-app d'un membre.
+//
+// `type` reste une chaine libre : les valeurs emises par l'application sont
+// enumerees dans NOTIFICATION_TYPE (notification.service.ts) et documentees
+// pour le front, mais l'historique porte des valeurs anterieures ('welcome',
+// 'new_quiz') qu'une contrainte d'enum aurait obligees a supprimer ou a
+// renommer arbitrairement.
 model Notification {
-  id        String   @id @default(uuid()) @db.Uuid
+  id        String    @id @default(uuid()) @db.Uuid
   title     String
   body      String
   type      String?
-  isRead    Boolean  @default(false)
-  createdAt DateTime @default(now())
+  // Chemin cote front vers le contenu concerne, ex. /actualites/<slug>.
+  lien      String?
+  isRead    Boolean   @default(false)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
 
   userId String @db.Uuid
-  user   User   @relation(fields: [userId], references: [id])
+  // Cascade : supprimer un membre doit emporter son fil. Sans cela la
+  // suppression definitive d'un compte echouait en RESTRICT.
+  user   Member @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Sert le fil pagine et le compteur de non-lues, les deux seules lectures.
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, isRead])
 }
 
 // Tokens de périphériques pour les notifications push
@@ -218,7 +308,9 @@ model DeviceToken {
   createdAt DateTime @default(now())
 
   userId String? @db.Uuid
-  user   User?   @relation(fields: [userId], references: [id])
+  // Cascade : supprimer un compte doit retirer ses appareils, sinon ils
+  // resteraient enregistres sans destinataire.
+  user   Member? @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Actualite {
@@ -232,19 +324,78 @@ model Actualite {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Workflow éditorial : une actualité naît en brouillon et est publiée par
+  // une action explicite. La migration de séparation posait PUBLIEE par défaut
+  // pour ne pas dépublier l'existant ; le défaut a basculé une fois la colonne
+  // remplie.
+  statut      StatutActualite @default(BROUILLON)
+  publishedAt DateTime?
+  deletedAt   DateTime?
+
+  authorId String? @db.Uuid
+  author   Admin?  @relation("ActualiteAuthor", fields: [authorId], references: [id])
+
+  // Nullable en base, obligatoire dans CreateActualiteDto : supprimer une
+  // categorie ne doit pas emporter les actualites qu'elle classait, et la
+  // migration n'avait pas de valeur legitime a inventer pour l'existant (il est
+  // rattache a une categorie « Actualites generales » posee par la migration).
+  categorieId String?             @db.Uuid
+  categorie   CategorieActualite? @relation(fields: [categorieId], references: [id], onDelete: SetNull)
+
+  // Relation implicite : Prisma gere la table de jonction et la suppression des
+  // liens quand une actualite ou un tag disparait.
+  tags TagActualite[]
+
   reactions    Reaction[]
   commentaires Commentaire[]
 
-  @@index([slug])
+  @@index([statut, date(sort: Desc)])
+  @@index([deletedAt])
+  @@index([categorieId])
+  @@map("actualites")
 }
 
-// Réaction (like) d'un utilisateur sur un signalement OU une actualité.
+// Classement editorial ferme : les categories sont gerees au back-office, une
+// actualite en porte au plus une. Calque sur CategorieSignalement, y compris
+// son soft-delete.
+model CategorieActualite {
+  id          String  @id @default(uuid()) @db.Uuid
+  nom         String  @db.VarChar
+  slug        String  @unique
+  description String? @db.Text
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  actualites Actualite[]
+
+  @@index([deletedAt])
+  @@map("categories_actualite")
+}
+
+// Etiquetage libre : les tags sont crees a la volee a la redaction, une
+// actualite peut en porter plusieurs. Pas de soft-delete -- un tag n'a pas de
+// contenu propre, le detacher suffit.
+model TagActualite {
+  id   String @id @default(uuid()) @db.Uuid
+  nom  String @db.VarChar
+  slug String @unique
+
+  createdAt DateTime @default(now())
+
+  actualites Actualite[]
+
+  @@map("tags_actualite")
+}
+
+// Réaction (like) d'un membre sur un signalement OU une actualité.
 // Une seule des deux cibles (signalementId / actualiteId) est renseignée.
 model Reaction {
   id String @id @default(uuid()) @db.Uuid
 
   userId String @db.Uuid
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   Member @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   signalementId String?             @db.Uuid
   signalement   SignalementCitoyen? @relation(fields: [signalementId], references: [id], onDelete: Cascade)
@@ -262,14 +413,14 @@ model Reaction {
   @@map("reactions")
 }
 
-// Commentaire d'un utilisateur sur un signalement OU une actualité.
+// Commentaire d'un membre sur un signalement OU une actualité.
 // Une seule des deux cibles (signalementId / actualiteId) est renseignée.
 model Commentaire {
   id      String @id @default(uuid()) @db.Uuid
   contenu String @db.Text
 
   userId String @db.Uuid
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   Member @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   signalementId String?             @db.Uuid
   signalement   SignalementCitoyen? @relation(fields: [signalementId], references: [id], onDelete: Cascade)
@@ -287,11 +438,15 @@ model Commentaire {
   @@map("commentaires")
 }
 
-// État de gamification d'un utilisateur : points cumulés et niveau dérivé.
-// Une seule ligne par utilisateur (relation 1-1 via userId unique).
+// État de gamification d'un membre : points cumulés et niveau dérivé.
+// Une seule ligne par membre (relation 1-1 via userId unique).
+// La PK est `userId` : ne pas introduire de colonne `id`, cela casserait
+// le renommage de la table parente. `@id` (et non `@unique`) reflete la
+// contrainte reellement presente en base et supprime l'index unique
+// redondant que portait la table.
 model UserGamification {
-  userId String @db.Uuid @unique
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @id @db.Uuid
+  user   Member @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   points Int @default(0)
   niveau Int @default(1)
@@ -301,18 +456,46 @@ model UserGamification {
   @@map("user_gamification")
 }
 
+// Origine d'une attribution de points. `AJUSTEMENT_MANUEL` couvre les
+// attributions faites depuis le back-office, seules a ne pas etre derivees
+// d'une action du membre.
+enum PointSource {
+  SIGNALEMENT_DEPOSE
+  SIGNALEMENT_VALIDE
+  QUIZ_TERMINE
+  COMMENTAIRE
+  LIKE
+  AJUSTEMENT_MANUEL
+}
+
 // Historique des attributions de points (journal des transactions).
+//
+// Le couple (source, sourceId) est la cle d'idempotence : il identifie le fait
+// qui a declenche l'attribution (le signalement depose, le quiz termine, le
+// commentaire ecrit, la cible likee). L'unicite sur (userId, source, sourceId)
+// est ce qui empeche de refarmer les memes points -- sans elle, unliker puis
+// reliker, ou rejouer un quiz, rapportait indefiniment.
+//
+// `sourceId` est nul pour les ajustements manuels : Postgres considerant les
+// NULL comme distincts, l'unicite ne les contraint pas, et le back-office peut
+// crediter ou debiter un membre autant de fois que necessaire.
 model PointTransaction {
   id String @id @default(uuid()) @db.Uuid
 
   userId String @db.Uuid
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   Member @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   points Int
   raison String
 
+  source   PointSource @default(AJUSTEMENT_MANUEL)
+  sourceId String?     @db.Uuid
+
   createdAt DateTime @default(now())
 
+  @@unique([userId, source, sourceId])
   @@index([userId])
+  // Sert le calcul du plafond quotidien (somme des points du jour par source).
+  @@index([userId, source, createdAt])
   @@map("point_transactions")
 }

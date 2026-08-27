@@ -1,4 +1,4 @@
-import { StatutSignalement, User } from '../../../../generated/prisma/client';
+import { StatutSignalement, Member } from '../../../../generated/prisma/client';
 import { CategorieSignalementDto } from '../categorie-signalement-dto/categorie-signalement.dto';
 import {ApiProperty} from "@nestjs/swagger";
 import {Expose, Type} from "class-transformer";
@@ -92,9 +92,11 @@ export class SignalementCitoyenDto {
   @Expose()
   longitude: number;
 
+  // Le champ porte la clé R2 en base ; le service retourne l'URL publique
+  // complète (R2StorageService.getPublicUrl), pas la clé brute.
   @ApiProperty({
     description: 'URL de la photo du signalement',
-    example: 'https://example.com/photos/signalement.jpg',
+    example: 'https://cdn.mec-ci.org/signalements/1732000000000.jpg',
     required: false,
   })
   @IsOptional()
@@ -133,7 +135,7 @@ export class SignalementCitoyenDto {
     required: false,
   })
   @Expose()
-  citoyen?: User;
+  citoyen?: Member;
 
   @ApiProperty({
     description: 'Date de création du signalement',

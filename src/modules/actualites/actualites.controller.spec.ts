@@ -8,7 +8,10 @@ describe('ActualitesController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ActualitesController],
-      providers: [ActualitesService],
+      // Le service est mocké : le fournir réellement obligerait à instancier
+      // PrismaService, ConfigService et EngagementService, ce qui faisait
+      // échouer la compilation du module de test.
+      providers: [{ provide: ActualitesService, useValue: {} }],
     }).compile();
 
     controller = module.get<ActualitesController>(ActualitesController);

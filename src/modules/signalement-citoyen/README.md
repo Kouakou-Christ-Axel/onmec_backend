@@ -12,11 +12,14 @@ Ce module permet aux citoyens de signaler des problèmes dans leur ville (nids d
 
 ## 🚀 Endpoints
 
-### 1. Créer un signalement
+### 1. Demander une URL présignée pour la photo
 
-**POST** `/api/v1/signalement-citoyen`
+**POST** `/api/v1/signalement-citoyen/upload-url`
 
-Crée un nouveau signalement citoyen.
+Génère une clé objet R2 sous `signalements/` et une URL PUT présignée. Le
+client envoie ensuite le fichier directement à R2 (aucun octet ne transite
+par le backend), puis fournit la clé retournée en `photoKey` à la création ou
+à la mise à jour du signalement.
 
 **Headers:**
 ```
@@ -24,16 +27,50 @@ Authorization: Bearer {token}
 Content-Type: application/json
 ```
 
-**Body (multipart/form-data):**
+**Body:**
+```json
+{
+  "filename": "photo.jpg",
+  "contentType": "image/jpeg"
+}
 ```
-titre: Nid de poule sur la route principale
-description: Un grand nid de poule situé au milieu de la chaussée, dangereux pour les véhicules
-categorieId: c1a2t3e4g5o6r7i8e9-0a1b-2c3d-4e5f-6g7h8i9j0k1l
-adresse: Avenue 12, Abidjan, Côte d'Ivoire
-latitude: 5.3600
-longitude: -4.0083
-statut: NOUVEAU
-photo: [fichier image]
+
+**Réponse (201):**
+```json
+{
+  "key": "signalements/1732000000000.jpg",
+  "uploadUrl": "https://<bucket>.r2.cloudflarestorage.com/signalements/1732000000000.jpg?X-Amz-...",
+  "expiresIn": 300
+}
+```
+
+Le client fait ensuite un `PUT` direct vers `uploadUrl` avec le fichier
+(`Content-Type` identique à celui déclaré ci-dessus).
+
+### 2. Créer un signalement
+
+**POST** `/api/v1/signalement-citoyen`
+
+Crée un nouveau signalement citoyen, à partir d'une `photoKey` déjà uploadée
+sur R2 (optionnelle — un signalement peut être créé sans photo).
+
+**Headers:**
+```
+Authorization: Bearer {token}
+Content-Type: application/json
+```
+
+**Body:**
+```json
+{
+  "titre": "Nid de poule sur la route principale",
+  "description": "Un grand nid de poule situé au milieu de la chaussée, dangereux pour les véhicules",
+  "categorieId": "c1a2t3e4g5o6r7i8e9-0a1b-2c3d-4e5f-6g7h8i9j0k1l",
+  "adresse": "Avenue 12, Abidjan, Côte d'Ivoire",
+  "latitude": 5.3600,
+  "longitude": -4.0083,
+  "photoKey": "signalements/1732000000000.jpg"
+}
 ```
 
 **Réponse (201):**
@@ -47,7 +84,7 @@ photo: [fichier image]
   "adresse": "Avenue 12, Abidjan, Côte d'Ivoire",
   "latitude": 5.3600,
   "longitude": -4.0083,
-  "photo": "https://example.com/photos/signalement.jpg",
+  "photo": "https://cdn.mec-ci.org/signalements/1732000000000.jpg",
   "statut": "NOUVEAU",
   "citoyenId": "u1s2e3r4-5i6d-7h8e-9r0e-1a2b3c4d5e6f",
   "createdAt": "2026-01-29T10:00:00.000Z",
@@ -55,7 +92,7 @@ photo: [fichier image]
 }
 ```
 
-### 2. Lister tous les signalements
+### 3. Lister tous les signalements
 
 **GET** `/api/v1/signalement-citoyen`
 
@@ -107,7 +144,7 @@ GET /api/v1/signalement-citoyen?statut=NOUVEAU&page=1&limit=10
 }
 ```
 
-### 3. Récupérer un signalement
+### 4. Récupérer un signalement
 
 **GET** `/api/v1/signalement-citoyen/:id`
 
@@ -134,7 +171,7 @@ Authorization: Bearer {token}
   "adresse": "Avenue 12, Abidjan, Côte d'Ivoire",
   "latitude": 5.3600,
   "longitude": -4.0083,
-  "photo": "https://example.com/photos/signalement.jpg",
+  "photo": "https://cdn.mec-ci.org/signalements/1732000000000.jpg",
   "statut": "NOUVEAU",
   "citoyenId": "u1s2e3r4-5i6d-7h8e-9r0e-1a2b3c4d5e6f",
   "citoyen": {
@@ -147,23 +184,26 @@ Authorization: Bearer {token}
 }
 ```
 
-### 4. Mettre à jour un signalement
+### 5. Mettre à jour un signalement
 
 **PATCH** `/api/v1/signalement-citoyen/:id`
 
-Met à jour les informations d'un signalement. **⚠️ Nécessite les droits administrateur.**
+Met à jour les informations d'un signalement, y compris sa photo via une
+nouvelle `photoKey` déjà uploadée sur R2. **⚠️ Nécessite les droits administrateur.**
 
 **Headers:**
 ```
 Authorization: Bearer {token}
-Content-Type: multipart/form-data
+Content-Type: application/json
 ```
 
-**Body (multipart/form-data):**
-```
-statut: EN_COURS
-validation: true
-photo: [nouveau fichier image (optionnel)]
+**Body:**
+```json
+{
+  "statut": "EN_COURS",
+  "validation": true,
+  "photoKey": "signalements/1732000005000.jpg"
+}
 ```
 
 **Réponse (200):**
@@ -177,7 +217,7 @@ photo: [nouveau fichier image (optionnel)]
 }
 ```
 
-### 5. Supprimer un signalement
+### 6. Supprimer un signalement
 
 **DELETE** `/api/v1/signalement-citoyen/:id`
 
@@ -211,7 +251,7 @@ Représente un signalement complet.
 - `adresse` (string): Adresse du lieu
 - `latitude` (number): Coordonnée GPS
 - `longitude` (number): Coordonnée GPS
-- `photo` (string, optionnel): URL de la photo
+- `photo` (string, optionnel): URL publique R2 de la photo (construite côté serveur à partir de la clé stockée)
 - `statut` (StatutSignalement): NOUVEAU, EN_COURS, RESOLU, REJETE
 - `citoyenId` (string, optionnel): ID du citoyen
 - `citoyen` (User, optionnel): Objet utilisateur
@@ -230,10 +270,9 @@ DTO pour créer un signalement.
 - `adresse` (string)
 - `latitude` (number)
 - `longitude` (number)
-- `statut` (StatutSignalement)
 
 **Propriétés optionnelles:**
-- `photo` (string)
+- `photoKey` (string) - Clé R2 obtenue via POST /signalement-citoyen/upload-url
 - `citoyenId` (string) - Automatiquement rempli par le backend
 
 ### UpdateSignalementCitoyenDto
@@ -283,16 +322,32 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ## 📸 Upload de Photos
 
-### Format accepté
-- Types de fichiers: JPEG, PNG, JPG
-- Taille maximale: Définie dans la configuration (généralement 5MB)
-- Champ: `photo` (multipart/form-data)
+L'upload se fait en deux temps, en upload direct vers Cloudflare R2 (le
+backend ne reçoit jamais les octets du fichier) :
 
-### Stockage
-Les photos sont stockées dans le dossier `uploads/signalements/` avec un nom unique basé sur le timestamp.
+1. `POST /signalement-citoyen/upload-url` avec `{ filename, contentType }`
+   retourne une clé objet R2 (`key`) et une URL PUT présignée (`uploadUrl`,
+   valable 5 minutes).
+2. Le client envoie le fichier directement via `PUT uploadUrl`, avec le même
+   `Content-Type` que celui déclaré à l'étape 1.
+3. La clé (`key`) est ensuite fournie en `photoKey` à `POST
+   /signalement-citoyen` (création) ou `PATCH /signalement-citoyen/:id`
+   (remplacement).
+
+### Format accepté
+- Types de fichiers: jpg, jpeg, png, gif, webp, heic, heif
+- Préfixe de clé: `signalements/` — toute clé fournie sous un autre préfixe
+  (celle d'un autre module, par exemple) est rejetée.
+
+### Remplacement
+Lors d'une mise à jour avec une nouvelle `photoKey`, l'ancien objet R2 est
+supprimé après la sauvegarde en base (best-effort — un signalement
+pré-migration dont la valeur stockée n'a pas la forme d'une clé R2 n'est
+simplement pas ciblé par la suppression).
 
 ### URL de la photo
-La photo est accessible via une URL relative: `/uploads/signalements/{filename}`
+Le champ `photo` exposé dans les réponses est l'URL publique complète du
+bucket R2 (`R2_PUBLIC_URL/<clé>`), pas la clé brute stockée en base.
 
 ## 📊 Modèle de données
 
@@ -313,17 +368,31 @@ La photo est accessible via une URL relative: `/uploads/signalements/{filename}`
 ### Exemple avec cURL
 
 ```bash
-# Créer un signalement avec photo
+# 1. Demander une URL présignée pour la photo
+curl -X POST https://api.mec-ci.org/api/v1/signalement-citoyen/upload-url \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"filename":"photo.jpg","contentType":"image/jpeg"}'
+# -> { "key": "signalements/....jpg", "uploadUrl": "https://...", "expiresIn": 300 }
+
+# 2. Envoyer le fichier directement à R2
+curl -X PUT "UPLOAD_URL_RETOURNEE" \
+  -H "Content-Type: image/jpeg" \
+  --data-binary @/chemin/vers/photo.jpg
+
+# 3. Créer le signalement avec la clé obtenue
 curl -X POST https://api.mec-ci.org/api/v1/signalement-citoyen \
   -H "Authorization: Bearer YOUR_TOKEN" \
-  -F "titre=Éclairage public défectueux" \
-  -F "description=Les lampadaires de l avenue ne fonctionnent plus" \
-  -F "categorieId=cat-uuid" \
-  -F "adresse=Avenue 7, Cocody" \
-  -F "latitude=5.3600" \
-  -F "longitude=-4.0083" \
-  -F "statut=NOUVEAU" \
-  -F "photo=@/chemin/vers/photo.jpg"
+  -H "Content-Type: application/json" \
+  -d '{
+    "titre": "Éclairage public défectueux",
+    "description": "Les lampadaires de l avenue ne fonctionnent plus",
+    "categorieId": "cat-uuid",
+    "adresse": "Avenue 7, Cocody",
+    "latitude": 5.3600,
+    "longitude": -4.0083,
+    "photoKey": "signalements/....jpg"
+  }'
 
 # Récupérer tous les signalements nouveaux
 curl -X GET "https://api.mec-ci.org/api/v1/signalement-citoyen?statut=NOUVEAU&page=1&limit=20" \
@@ -332,8 +401,8 @@ curl -X GET "https://api.mec-ci.org/api/v1/signalement-citoyen?statut=NOUVEAU&pa
 # Mettre à jour un signalement (Admin uniquement)
 curl -X PATCH https://api.mec-ci.org/api/v1/signalement-citoyen/SIGNALEMENT_ID \
   -H "Authorization: Bearer ADMIN_TOKEN" \
-  -F "statut=EN_COURS" \
-  -F "validation=true"
+  -H "Content-Type: application/json" \
+  -d '{"statut":"EN_COURS","validation":true}'
 ```
 
 ### Exemple avec Axios (JavaScript/TypeScript)
@@ -348,26 +417,33 @@ const api = axios.create({
   },
 });
 
-// Créer un signalement avec photo
-const formData = new FormData();
-formData.append('titre', 'Déchets non ramassés');
-formData.append('description', 'Les déchets s accumulent depuis une semaine');
-formData.append('categorieId', 'cat-uuid');
-formData.append('adresse', 'Rue 12, Marcory');
-formData.append('latitude', '5.3200');
-formData.append('longitude', '-3.9800');
-formData.append('statut', 'NOUVEAU');
-
-// Ajouter la photo depuis un input file
+// 1. Demander une URL présignée, puis envoyer le fichier directement à R2
 const photoInput = document.querySelector('input[type="file"]');
-if (photoInput.files[0]) {
-  formData.append('photo', photoInput.files[0]);
+const file = photoInput.files[0];
+let photoKey;
+
+if (file) {
+  const { data: upload } = await api.post('/signalement-citoyen/upload-url', {
+    filename: file.name,
+    contentType: file.type,
+  });
+  await fetch(upload.uploadUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': file.type },
+    body: file,
+  });
+  photoKey = upload.key;
 }
 
-const signalement = await api.post('/signalement-citoyen', formData, {
-  headers: {
-    'Content-Type': 'multipart/form-data',
-  },
+// 2. Créer le signalement avec la clé obtenue
+const signalement = await api.post('/signalement-citoyen', {
+  titre: 'Déchets non ramassés',
+  description: 'Les déchets s accumulent depuis une semaine',
+  categorieId: 'cat-uuid',
+  adresse: 'Rue 12, Marcory',
+  latitude: 5.3200,
+  longitude: -3.9800,
+  photoKey,
 });
 
 // Récupérer avec filtres
@@ -383,14 +459,9 @@ console.log(data.data); // Liste des signalements
 console.log(data.meta); // Informations de pagination
 
 // Mettre à jour (Admin uniquement)
-const updateFormData = new FormData();
-updateFormData.append('statut', 'EN_COURS');
-updateFormData.append('validation', 'true');
-
-await api.patch(`/signalement-citoyen/${id}`, updateFormData, {
-  headers: {
-    'Content-Type': 'multipart/form-data',
-  },
+await api.patch(`/signalement-citoyen/${id}`, {
+  statut: 'EN_COURS',
+  validation: true,
 });
 ```
 
