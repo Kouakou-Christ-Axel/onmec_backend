@@ -58,8 +58,3 @@ export class CreateDocumentDto {
   @IsString({ message: 'coverKey doit être une chaîne de caractères' })
   coverKey?: string;
 }
-
-export interface DocumentFilesDto {
-  covers?: Express.Multer.File[];
-  fichiers?: Express.Multer.File[];
-}

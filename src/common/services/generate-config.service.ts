@@ -1,143 +1,15 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
-import { diskStorage } from 'multer';
-import { extname, join } from 'path';
-import { GenerateDataService } from "./generate-data.service";
-import * as sharp from 'sharp';
-import * as fs from 'fs';
-
-@Injectable()
+/**
+ * Extensions d'image acceptees pour les flux d'upload (actualites, avatars,
+ * signalements, couvertures librairie).
+ *
+ * `svg` a ete retire : un SVG est un document XML pouvant embarquer du
+ * script, et les fichiers sont servis en statique depuis /uploads sur le
+ * meme domaine — c'est un XSS stocke.
+ *
+ * Ce filtre porte sur le NOM du fichier fourni par le client lors de la
+ * demande d'URL presignee (POST .../upload-url) ; le backend ne recoit plus
+ * les octets pour verifier le type reel (magic number).
+ */
 export class GenerateConfigService {
-    /**
-     * Taille maximale d'une image televersee.
-     * Multer n'imposait aucune limite : un seul appel pouvait remplir le disque.
-     */
-    static readonly MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-
-    /**
-     * Extensions acceptees.
-     *
-     * `svg` a ete retire : un SVG est un document XML pouvant embarquer du
-     * script, et les fichiers sont servis en statique depuis /uploads sur le
-     * meme domaine — c'est un XSS stocke.
-     *
-     * Ce filtre porte sur le NOM du fichier. La verification du type reel
-     * (magic number) reste a brancher via UploadValidationPipe.
-     */
     static readonly ALLOWED_IMAGE_EXT = /\.(jpg|jpeg|png|gif|webp|heic|heif)$/i;
-
-    static generateConfigSingleImageUpload(destination: string, name?: string) {
-        const imageConfig = {
-            storage: diskStorage({
-                destination,
-                filename: async (req, file, cb) => {
-                    const ext = extname(file.originalname);
-                    const fileNameHash = await GenerateDataService.generateSecureImageName(name ? req.body[name] : file.originalname);
-                    const filename = `${fileNameHash}${ext}`;
-                    cb(null, filename);
-                },
-            }),
-            limits: { fileSize: GenerateConfigService.MAX_IMAGE_BYTES, files: 1 },
-            fileFilter: (req, file, cb) => {
-                // Insensible à la casse + formats iOS (heic/heif) pour éviter
-                // les rejets d'images valides (ex: IMG_1234.JPG, photo.HEIC).
-                if (!file.originalname.match(GenerateConfigService.ALLOWED_IMAGE_EXT)) {
-                    return cb(
-                        new BadRequestException(
-                            'Seuls les fichiers image sont acceptés (jpg, jpeg, png, gif, webp, heic, heif)',
-                        ),
-                        false,
-                    );
-                }
-                cb(null, true);
-            },
-        };
-        return imageConfig;
-    }
-
-    static async compressImages(
-        fileMap: Record<string, string>, // <-- entrée modifiée
-        outputDir?: string,
-        opts: {
-            quality?: number;
-            width?: number;
-            height?: number;
-            fit?: 'inside' | 'outside' | 'fill' | 'cover' | 'contain';
-        } = {
-                quality: 70,
-                width: 1280,
-                height: 720,
-                fit: 'inside',
-            },
-        deleteOriginal: boolean = false
-    ): Promise<Record<string, string>> { // <-- sortie modifiée
-        const compressedPaths: Record<string, string> = {};
-        const supportedExts = ['.jpg', '.jpeg', '.png', '.webp'];
-        if (!fileMap || Object.keys(fileMap).length === 0) return compressedPaths;
-        for (const [key, path] of Object.entries(fileMap)) {
-            try {
-                const ext = extname(path).toLowerCase();
-                if (!supportedExts.includes(ext)) continue;
-
-                const originalFilename = path.split('/').pop() ?? 'image';
-                const [nameWithoutExt] = originalFilename.split(ext);
-
-                let finalFilename = originalFilename;
-                let tempOutputPath = '';
-
-                if (outputDir) {
-                    if (!fs.existsSync(outputDir)) {
-                        fs.mkdirSync(outputDir, { recursive: true });
-                    }
-
-                    const samePath = join(outputDir, originalFilename) === path;
-
-                    if (!deleteOriginal && samePath) {
-                        finalFilename = `compressed_${nameWithoutExt}${ext}`;
-                    }
-
-                    tempOutputPath = join(outputDir, finalFilename + '.tmp');
-                } else {
-                    tempOutputPath = path + '.tmp';
-                }
-
-                const transformer = sharp(path).resize({
-                    width: opts.width,
-                    height: opts.height,
-                    fit: opts.fit,
-                });
-
-                if (ext === '.jpg' || ext === '.jpeg') {
-                    transformer.jpeg({ quality: opts.quality });
-                } else if (ext === '.png') {
-                    transformer.png({ quality: opts.quality });
-                } else if (ext === '.webp') {
-                    transformer.webp({ quality: opts.quality });
-                }
-
-                await transformer.toFile(tempOutputPath);
-
-                let finalPath: string;
-                if (deleteOriginal) {
-                    fs.unlinkSync(path);
-                    finalPath = outputDir ? join(outputDir, finalFilename) : path;
-
-                    fs.renameSync(tempOutputPath, finalPath);
-                } else {
-                    if (!outputDir) {
-                        finalPath = tempOutputPath;
-                    } else {
-                        finalPath = tempOutputPath.replace('.tmp', '');
-                        fs.renameSync(tempOutputPath, finalPath);
-                    }
-                }
-
-                compressedPaths[key] = finalPath;
-
-            } catch (err) {
-                console.error(`Erreur lors de la compression de ${path} :`, err);
-            }
-        }
-
-        return compressedPaths;
-    }
 }
