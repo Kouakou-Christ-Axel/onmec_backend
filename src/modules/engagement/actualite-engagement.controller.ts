@@ -8,10 +8,8 @@ import {
   Param,
   Post,
   Query,
-  Req,
   UseGuards,
 } from '@nestjs/common';
-import { Request } from 'express';
 import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
 import {
   ApiBearerAuth,
@@ -22,6 +20,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { EngagementService } from './engagement.service';
 import { CreateCommentaireDto } from './dto/create-commentaire.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
@@ -49,8 +48,7 @@ export class ActualiteEngagementController {
   @ApiOkResponse({ description: 'État du like mis à jour', type: ReactionToggleResponseDto })
   @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Non authentifié' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Actualité non trouvée' })
-  toggleReaction(@Param('id') id: string, @Req() req: Request) {
-    const user = req.user as AuthenticatedActor;
+  toggleReaction(@Param('id') id: string, @CurrentUser() user: AuthenticatedActor) {
     return this.engagementService.toggleReaction('actualite', id, user.id);
   }
 
@@ -84,9 +82,8 @@ export class ActualiteEngagementController {
   createCommentaire(
     @Param('id') id: string,
     @Body() dto: CreateCommentaireDto,
-    @Req() req: Request,
+    @CurrentUser() user: AuthenticatedActor,
   ) {
-    const user = req.user as AuthenticatedActor;
     return this.engagementService.createCommentaire('actualite', id, user.id, dto);
   }
 
@@ -108,9 +105,8 @@ export class ActualiteEngagementController {
   deleteCommentaire(
     @Param('id') id: string,
     @Param('commentaireId') commentaireId: string,
-    @Req() req: Request,
+    @CurrentUser() user: AuthenticatedActor,
   ) {
-    const user = req.user as AuthenticatedActor;
     return this.engagementService.deleteOwnCommentaire(
       'actualite',
       id,

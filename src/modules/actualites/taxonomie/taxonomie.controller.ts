@@ -29,15 +29,13 @@ import { AdminRolesGuard } from '../../auth/guards/admin-roles.guard';
 import { AdminRoles } from '../../auth/decorators/admin-roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { TaxonomieService } from './taxonomie.service';
+import { EDITORIAL_ROLES } from '../actualites.service';
 import {
   CategorieActualiteResponseDto,
   CreateCategorieActualiteDto,
   TagActualiteResponseDto,
   UpdateCategorieActualiteDto,
 } from './dto/taxonomie.dto';
-
-/** Rôles éditoriaux : ceux qui rédigent gèrent aussi le classement. */
-const EDITORIAL = [AdminRole.ADMIN_NATIONAL, AdminRole.CHARGE_COMMUNICATION];
 
 /**
  * Catégories d'actualité.
@@ -64,7 +62,7 @@ export class CategorieActualiteController {
 
   @Post()
   @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
-  @AdminRoles(...EDITORIAL)
+  @AdminRoles(...EDITORIAL_ROLES)
   @ApiBearerAuth('JWT')
   @ApiOperation({ summary: 'Créer une catégorie (back-office)' })
   @ApiCreatedResponse({ type: CategorieActualiteResponseDto })
@@ -77,7 +75,7 @@ export class CategorieActualiteController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
-  @AdminRoles(...EDITORIAL)
+  @AdminRoles(...EDITORIAL_ROLES)
   @ApiBearerAuth('JWT')
   @ApiOperation({
     summary: 'Modifier une catégorie (back-office)',
@@ -135,7 +133,7 @@ export class TagActualiteController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
-  @AdminRoles(...EDITORIAL)
+  @AdminRoles(...EDITORIAL_ROLES)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiBearerAuth('JWT')
   @ApiOperation({

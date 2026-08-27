@@ -16,9 +16,10 @@ import { NotificationModule } from './modules/notification/notification.module';
 import { ActualitesModule } from './modules/actualites/actualites.module';
 import { EngagementModule } from './modules/engagement/engagement.module';
 import { GamificationModule } from './modules/gamification/gamification.module';
-import { HealthModule } from './health/health.module';
+import { HealthController } from './health/health.controller';
 
 @Module({
+  controllers: [HealthController],
   imports: [
     JsonWebTokenModule,
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
@@ -37,7 +38,6 @@ import { HealthModule } from './health/health.module';
     ActualitesModule,
     EngagementModule,
     GamificationModule,
-    HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

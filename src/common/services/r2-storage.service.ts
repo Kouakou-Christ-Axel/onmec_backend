@@ -1,4 +1,8 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   S3Client,
@@ -7,8 +11,26 @@ import {
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { randomUUID } from 'crypto';
+import { extname } from 'path';
+import { UploadUrlResponseDto } from '../dto/upload-url.dto';
 
 const NOT_CONFIGURED_MESSAGE = 'Stockage R2 non configuré';
+
+/** Durée de validité d'une URL présignée, en secondes. */
+const UPLOAD_EXPIRES_IN = 300;
+
+/**
+ * Extensions d'image acceptées pour les flux d'upload (actualités, avatars,
+ * signalements, couvertures librairie).
+ *
+ * `svg` en est exclu : un SVG est un document XML pouvant embarquer du script.
+ *
+ * Ce filtre porte sur le NOM du fichier fourni par le client lors de la demande
+ * d'URL présignée ; le backend ne reçoit plus les octets et ne peut donc pas
+ * vérifier le type réel (magic number).
+ */
+const ALLOWED_IMAGE_EXT = /\.(jpg|jpeg|png|gif|webp|heic|heif)$/i;
 
 /**
  * Service de stockage objet Cloudflare R2 (compatible S3).
@@ -56,6 +78,30 @@ export class R2StorageService {
       ContentType: contentType,
     });
     return getSignedUrl(this.client, command, { expiresIn });
+  }
+
+  /**
+   * Signe l'upload d'une image dans `folder`, après contrôle de l'extension.
+   *
+   * Les trois flux image (avatars, actualités, signalements) ne différaient que
+   * par ce préfixe de dossier : ils partagent désormais ce chemin unique.
+   */
+  async presignImage(
+    folder: string,
+    filename: string,
+    contentType: string,
+  ): Promise<UploadUrlResponseDto> {
+    if (!ALLOWED_IMAGE_EXT.test(filename)) {
+      throw new BadRequestException(
+        'Seuls les fichiers image sont acceptés (jpg, jpeg, png, gif, webp, heic, heif)',
+      );
+    }
+    const key = `${folder}/${randomUUID()}${extname(filename)}`;
+    return {
+      key,
+      uploadUrl: await this.getUploadUrl(key, contentType, UPLOAD_EXPIRES_IN),
+      expiresIn: UPLOAD_EXPIRES_IN,
+    };
   }
 
   /** Télécharge un objet R2 entièrement en mémoire, pour un traitement ponctuel côté backend. */

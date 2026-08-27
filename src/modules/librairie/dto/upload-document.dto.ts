@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { UploadUrlResponseDto } from 'src/common/dto/upload-url.dto';
 
 /** Type de fichier demandé lors d'une requête d'URL présignée pour la librairie. */
 export enum DocumentUploadKind {
@@ -47,16 +48,7 @@ export class UploadDocumentRequestDto {
   documentId?: string;
 }
 
-export class UploadDocumentResponseDto {
-  @ApiProperty({ description: 'Clé objet R2 générée côté serveur' })
-  key: string;
-
-  @ApiProperty({ description: 'URL PUT présignée vers laquelle envoyer le fichier' })
-  uploadUrl: string;
-
-  @ApiProperty({ description: "Durée de validité de l'URL présignée, en secondes" })
-  expiresIn: number;
-
+export class UploadDocumentResponseDto extends UploadUrlResponseDto {
   @ApiProperty({
     description:
       "Identifiant du dossier R2 (et du futur document) : à repasser en documentId lors de l'upload de la couverture, et retrouvable dans fichierKey/coverKey lors de POST /librairie.",

@@ -25,6 +25,28 @@ const ACTUALITES_VISIBLES = {
   deletedAt: null,
 };
 
+/** Joint le compteur d'actualités visibles à une catégorie ou un tag. */
+const ACTUALITES_COUNT_INCLUDE = {
+  _count: { select: { actualites: { where: ACTUALITES_VISIBLES } } },
+} as const;
+
+/** Met en forme une catégorie chargée avec `ACTUALITES_COUNT_INCLUDE`. */
+function toDto(categorie: {
+  id: string;
+  nom: string;
+  slug: string;
+  description: string | null;
+  _count: { actualites: number };
+}): CategorieActualiteResponseDto {
+  return {
+    id: categorie.id,
+    nom: categorie.nom,
+    slug: categorie.slug,
+    description: categorie.description,
+    actualitesCount: categorie._count.actualites,
+  };
+}
+
 @Injectable()
 export class TaxonomieService {
   constructor(private readonly prisma: PrismaService) {}
@@ -57,17 +79,9 @@ export class TaxonomieService {
           description: dto.description ?? null,
           deletedAt: null,
         },
-        include: {
-          _count: { select: { actualites: { where: ACTUALITES_VISIBLES } } },
-        },
+        include: ACTUALITES_COUNT_INCLUDE,
       });
-      return {
-        id: revenue.id,
-        nom: revenue.nom,
-        slug: revenue.slug,
-        description: revenue.description,
-        actualitesCount: revenue._count.actualites,
-      };
+      return toDto(revenue);
     }
 
     try {
@@ -89,16 +103,10 @@ export class TaxonomieService {
     const categories = await this.prisma.categorieActualite.findMany({
       where: { deletedAt: null },
       orderBy: { nom: 'asc' },
-      include: { _count: { select: { actualites: { where: ACTUALITES_VISIBLES } } } },
+      include: ACTUALITES_COUNT_INCLUDE,
     });
 
-    return categories.map((c) => ({
-      id: c.id,
-      nom: c.nom,
-      slug: c.slug,
-      description: c.description,
-      actualitesCount: c._count.actualites,
-    }));
+    return categories.map(toDto);
   }
 
   private async assertCategorieExists(id: string) {
@@ -117,22 +125,15 @@ export class TaxonomieService {
   ): Promise<CategorieActualiteResponseDto> {
     await this.assertCategorieExists(id);
 
+    // Prisma ignore les champs `undefined` : pas besoin de spread conditionnel,
+    // ni `nom` ni `description` ne distinguent une valeur absente d'un `null`.
     const categorie = await this.prisma.categorieActualite.update({
       where: { id },
-      data: {
-        ...(dto.nom !== undefined && { nom: dto.nom.trim() }),
-        ...(dto.description !== undefined && { description: dto.description }),
-      },
-      include: { _count: { select: { actualites: { where: ACTUALITES_VISIBLES } } } },
+      data: { nom: dto.nom?.trim(), description: dto.description },
+      include: ACTUALITES_COUNT_INCLUDE,
     });
 
-    return {
-      id: categorie.id,
-      nom: categorie.nom,
-      slug: categorie.slug,
-      description: categorie.description,
-      actualitesCount: categorie._count.actualites,
-    };
+    return toDto(categorie);
   }
 
   /**
@@ -160,7 +161,7 @@ export class TaxonomieService {
   async findAllTags(): Promise<TagActualiteResponseDto[]> {
     const tags = await this.prisma.tagActualite.findMany({
       orderBy: { nom: 'asc' },
-      include: { _count: { select: { actualites: { where: ACTUALITES_VISIBLES } } } },
+      include: ACTUALITES_COUNT_INCLUDE,
     });
 
     return tags.map((t) => ({

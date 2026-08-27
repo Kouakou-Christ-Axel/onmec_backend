@@ -28,10 +28,6 @@ export class GamificationService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  private calculerNiveau(points: number): number {
-    return 1 + Math.floor(Math.max(points, 0) / POINTS_PAR_NIVEAU);
-  }
-
   /**
    * Calcule les badges dérivés du niveau atteint.
    * Chaque badge porte la date `obtenuLe` correspondant à la dernière mise à
@@ -179,9 +175,11 @@ export class GamificationService {
    * une seconde tentative sur le meme fait est refusee par la base, pas par une
    * lecture prealable qu'une requete concurrente pourrait doubler.
    *
-   * Ne leve pas d'exception quand les points ne sont pas attribues : ne pas
-   * gagner de points est un resultat normal (deja credite, plafond atteint), et
-   * non une erreur de l'action qui l'a declenchee.
+   * Ne leve jamais : la gamification est un effet de bord de l'action du
+   * membre, pas sa raison d'etre. Ni le plafond quotidien atteint, ni une
+   * base indisponible cote points ne doivent faire echouer le depot d'un
+   * signalement ou la publication d'un commentaire, deja enregistres a ce
+   * stade — on journalise et on rend la main.
    *
    * @returns Le nombre de points reellement credites (0 si aucun).
    */
@@ -226,37 +224,14 @@ export class GamificationService {
         );
         return 0;
       }
-      throw error;
-    }
-  }
-
-  /**
-   * `attribuer` en mode « au mieux » : journalise et rend la main plutot que de
-   * propager l'erreur.
-   *
-   * La gamification est un effet de bord de l'action du membre, pas sa raison
-   * d'etre : une base indisponible cote points ne doit pas faire echouer le
-   * depot d'un signalement ni la publication d'un commentaire, qui sont deja
-   * enregistres a ce stade. Les appelants passent tous par ici ; `attribuer`
-   * reste disponible telle quelle si un appelant veut traiter l'echec.
-   */
-  async attribuerSansEchouer(params: {
-    userId: string;
-    source: PointSource;
-    sourceId: string;
-    points: number;
-    raison: string;
-  }): Promise<number> {
-    try {
-      return await this.attribuer(params);
-    } catch (error) {
       this.logger.error(
-        `Echec de l'attribution de points ${params.source}:${params.sourceId} pour le membre ${params.userId}`,
+        `Echec de l'attribution de points ${source}:${sourceId} pour le membre ${userId}`,
         error instanceof Error ? error.stack : String(error),
       );
       return 0;
     }
   }
+
 
   /**
    * Classement des utilisateurs triés par points décroissants.

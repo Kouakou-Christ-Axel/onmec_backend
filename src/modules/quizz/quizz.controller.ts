@@ -10,7 +10,6 @@ import {
   Patch,
   Post,
   Query,
-  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -26,9 +25,9 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
-import { Request } from 'express';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { QuizzService } from './quizz.service';
 import { CreateCategorieQuizDto, UpdateCategorieQuizDto } from './dto/create-categorie-quiz.dto';
 import { CreateQuizzDto } from './dto/create-quizz.dto';
@@ -59,8 +58,7 @@ export class QuizzController {
   @ApiCreatedResponse({ description: 'Quiz créé avec succès', type: QuizzResponseDto })
   @ApiUnauthorizedResponse({ description: 'Non authentifié' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Accès réservé aux administrateurs' })
-  create(@Req() req: Request, @Body() createQuizzDto: CreateQuizzDto) {
-    const user = req.user as AuthenticatedActor;
+  create(@CurrentUser() user: AuthenticatedActor, @Body() createQuizzDto: CreateQuizzDto) {
     return this.quizService.create(createQuizzDto, user.id);
   }
 
@@ -72,8 +70,10 @@ export class QuizzController {
   @ApiOkResponse({ description: 'Réponses enregistrées, score calculé', type: SubmitAnswerResponseDto })
   @ApiNotFoundResponse({ description: 'Quiz non trouvé' })
   @ApiUnauthorizedResponse({ description: 'Non authentifié' })
-  submitAnswers(@Req() req: Request, @Body() submitAnswerDto: SubmitAnswerDto) {
-    const user = req.user as AuthenticatedActor;
+  submitAnswers(
+    @CurrentUser() user: AuthenticatedActor,
+    @Body() submitAnswerDto: SubmitAnswerDto,
+  ) {
     // L'auteur de la soumission est toujours l'utilisateur authentifié : on
     // ignore tout userId fourni par le client (anti-usurpation).
     submitAnswerDto.userId = user.id;
@@ -160,8 +160,7 @@ export class QuizzController {
   @ApiOkResponse({ description: 'Résultats récupérés', type: [QuizResultResponseDto] })
   @ApiUnauthorizedResponse({ description: 'Non authentifié' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Accès non autorisé aux résultats d\'un autre utilisateur' })
-  getUserResults(@Req() req: Request, @Param('userId') userId: string) {
-    const user = req.user as AuthenticatedActor;
+  getUserResults(@CurrentUser() user: AuthenticatedActor, @Param('userId') userId: string) {
     if (user.id !== userId && user.type !== 'admin') {
       throw new ForbiddenException(
         'Vous ne pouvez consulter que vos propres résultats.',

@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional, PickType } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsBoolean, IsOptional } from 'class-validator';
+import { PaginationQueryDto } from '../../engagement/dto/pagination-query.dto';
 
 export class NotificationDto {
   @ApiProperty({
@@ -54,27 +55,7 @@ export class TopicNotificationDto extends PickType(NotificationDto, [
 
 // ─── Fil in-app ──────────────────────────────────────────────────────────────
 
-export class NotificationListQueryDto {
-  @ApiPropertyOptional({ description: 'Page courante', example: 1, default: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number = 1;
-
-  @ApiPropertyOptional({
-    description: 'Éléments par page',
-    example: 20,
-    default: 20,
-    maximum: 100,
-  })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit?: number = 20;
-
+export class NotificationListQueryDto extends PaginationQueryDto {
   // `@Type(() => String)` est indispensable : le ValidationPipe global tourne
   // avec `enableImplicitConversion`, qui coerce d'apres le type declare AVANT
   // que `@Transform` ne s'execute. Sans lui, `?nonLues=false` filtrerait quand

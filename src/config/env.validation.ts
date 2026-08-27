@@ -1,6 +1,5 @@
 import { plainToInstance } from 'class-transformer';
 import {
-  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -42,8 +41,6 @@ const SECRETS_DEV: Record<string, string> = {
   REFRESH_TOKEN_SECRET:
     'dev-only-refresh-secret-onmec-ne-pas-utiliser-en-production',
 };
-
-const LONGUEUR_SECRET_RECOMMANDEE = 32;
 
 function estVide(valeur: unknown): boolean {
   return valeur === undefined || valeur === null || valeur === '';
@@ -90,22 +87,6 @@ function appliquerDefauts(
     }
   }
 
-  // La longueur est une question d'hygiene, pas de fonctionnement : un secret
-  // court signe et verifie correctement. On avertit, on ne bloque pas — refuser
-  // de demarrer sur ce motif transformerait un deploiement qui tourne en panne.
-  for (const cle of Object.keys(SECRETS_DEV)) {
-    const valeur = resultat[cle];
-    if (
-      typeof valeur === 'string' &&
-      valeur.length > 0 &&
-      valeur.length < LONGUEUR_SECRET_RECOMMANDEE
-    ) {
-      console.warn(
-        `⚠️  ${cle} fait ${valeur.length} caractères : au moins ${LONGUEUR_SECRET_RECOMMANDEE} sont recommandés.`,
-      );
-    }
-  }
-
   return resultat;
 }
 
@@ -148,10 +129,6 @@ export class EnvironmentVariables {
       'REFRESH_TOKEN_EXPIRATION doit être une durée valide, par exemple "7d"',
   })
   REFRESH_TOKEN_EXPIRATION: string;
-
-  @IsOptional()
-  @IsIn(['production', 'staging', 'development', 'dev', 'test'])
-  APP_ENV?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

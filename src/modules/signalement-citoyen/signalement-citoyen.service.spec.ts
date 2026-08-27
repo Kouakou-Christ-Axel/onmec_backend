@@ -23,7 +23,7 @@ describe('SignalementCitoyenService', () => {
   // Le service credite des points au depot et a la validation d'un
   // signalement ; sans ce provider le module de test ne compile plus.
   const gamificationMock = {
-    attribuerSansEchouer: jest.fn().mockResolvedValue(0),
+    attribuer: jest.fn().mockResolvedValue(0),
   };
 
   // Le service previent le citoyen au changement de statut de son signalement.

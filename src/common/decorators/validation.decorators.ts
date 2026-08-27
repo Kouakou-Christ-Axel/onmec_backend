@@ -28,6 +28,25 @@ export function IsEmailField(description = 'Adresse email') {
   );
 }
 
+/**
+ * Champ mot de passe "en clair" (saisie a comparer, pas a nouveau creee) :
+ * pas de politique de format, juste present et sans espaces parasites. Utilise
+ * pour le mot de passe de connexion et l'ancien mot de passe d'un changement —
+ * la politique de force s'applique a la creation, pas a la relecture d'un mot
+ * de passe deja existant (voir IsStrongPassword).
+ */
+export function IsPasswordField(description = 'Mot de passe', example?: string) {
+  return applyDecorators(
+    ApiProperty({
+      description,
+      required: true,
+      ...(example ? { example } : {}),
+    }),
+    IsNotEmpty(),
+    Transform(({ value }) => (typeof value === 'string' ? value.trim() : value)),
+  );
+}
+
 // Au moins une majuscule, un chiffre et un caractere special.
 const PASSWORD_PATTERN =
   /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{}|;':".,<>?/\\]).+$/;

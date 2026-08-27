@@ -208,7 +208,7 @@ export class QuizzService {
     // `sourceId` est le quiz, pas la tentative : seule la première complétion
     // rapporte des points. Auparavant chaque soumission créditait à nouveau, et
     // rejouer le même quiz en boucle suffisait à monter en niveau.
-    const pointsGagnes = await this.gamification.attribuerSansEchouer({
+    const pointsGagnes = await this.gamification.attribuer({
       userId,
       source: PointSource.QUIZ_TERMINE,
       sourceId: quizId,
@@ -246,39 +246,38 @@ export class QuizzService {
   async getQuizStatistics(quizId: string) {
     const quiz = await this.prisma.quiz.findUnique({
       where: { id: quizId },
-      include: {
-        userQuizzes: {
-          select: {
-            score: true,
-            completedAt: true,
-            user: { select: { id: true, fullname: true } },
-          },
-        },
-        questions: { select: { id: true } },
-      },
+      select: { id: true, title: true, _count: { select: { questions: true } } },
     });
 
     if (!quiz) throw new NotFoundException(`Quiz avec l'ID ${quizId} non trouvé`);
 
-    const totalAttempts = quiz.userQuizzes.length;
-    const averageScore =
-      totalAttempts > 0
-        ? quiz.userQuizzes.reduce((sum, uq) => sum + uq.score, 0) / totalAttempts
-        : 0;
+    // Moyenne et top 10 calculés en base : charger toutes les tentatives pour
+    // les réduire en mémoire ne passe pas à l'échelle sur un quiz populaire.
+    const [{ _count: totalAttempts, _avg }, recentAttempts] = await Promise.all([
+      this.prisma.userQuiz.aggregate({
+        where: { quizId },
+        _count: true,
+        _avg: { score: true },
+      }),
+      this.prisma.userQuiz.findMany({
+        where: { quizId },
+        select: {
+          score: true,
+          completedAt: true,
+          user: { select: { id: true, fullname: true } },
+        },
+        orderBy: { completedAt: 'desc' },
+        take: 10,
+      }),
+    ]);
 
     return {
       quizId: quiz.id,
       title: quiz.title,
-      totalQuestions: quiz.questions.length,
+      totalQuestions: quiz._count.questions,
       totalAttempts,
-      averageScore: Math.round(averageScore),
-      recentAttempts: quiz.userQuizzes
-        .sort(
-          (a, b) =>
-            (b.completedAt || new Date()).getTime() -
-            (a.completedAt || new Date()).getTime(),
-        )
-        .slice(0, 10),
+      averageScore: Math.round(_avg.score ?? 0),
+      recentAttempts,
     };
   }
 
@@ -293,15 +292,12 @@ export class QuizzService {
     const { title, description, difficulte, categorieId, questions } = updateQuizzDto;
 
     await this.prisma.$transaction(async (tx) => {
-      // Mise à jour des champs scalaires fournis
+      // Mise à jour des champs scalaires fournis. Prisma ignore les champs
+      // `undefined` : aucun de ces champs ne distingue une valeur absente d'un
+      // `null`, pas besoin de spread conditionnel.
       await tx.quiz.update({
         where: { id },
-        data: {
-          ...(title !== undefined ? { title } : {}),
-          ...(description !== undefined ? { description } : {}),
-          ...(difficulte !== undefined ? { difficulte } : {}),
-          ...(categorieId !== undefined ? { categorieId } : {}),
-        },
+        data: { title, description, difficulte, categorieId },
       });
 
       // Remplacement complet des questions/choix si fournis

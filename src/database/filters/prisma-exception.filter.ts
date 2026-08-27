@@ -78,11 +78,6 @@ export class PrismaExceptionFilter implements ExceptionFilter {
             return this.handleIntrospectionErrors(exception);
         }
 
-        // Erreurs Accelerate P6xxx et P5011
-        if (code.startsWith('P6') || code === 'P5011') {
-            return this.handleAccelerateErrors(exception);
-        }
-
         return {
             status: HttpStatus.INTERNAL_SERVER_ERROR,
             message: 'Erreur de base de données non gérée'
@@ -188,8 +183,6 @@ export class PrismaExceptionFilter implements ExceptionFilter {
                 return { status: HttpStatus.BAD_REQUEST, message: 'Limite de paramètres de requête dépassée' };
             case 'P2030':
                 return { status: HttpStatus.BAD_REQUEST, message: 'Index de recherche textuelle manquant' };
-            case 'P2031':
-                return { status: HttpStatus.SERVICE_UNAVAILABLE, message: 'MongoDB doit fonctionner en replica set' };
             case 'P2033':
                 return { status: HttpStatus.BAD_REQUEST, message: 'Nombre trop grand - Utilisez BigInt' };
             case 'P2034':
@@ -213,33 +206,6 @@ export class PrismaExceptionFilter implements ExceptionFilter {
     private handleIntrospectionErrors(_exception: Prisma.PrismaClientKnownRequestError): { status: HttpStatus; message: string } {
         // Les erreurs d'introspection sont généralement des erreurs de développement
         return { status: HttpStatus.INTERNAL_SERVER_ERROR, message: 'Erreur d\'introspection de base de données' };
-    }
-
-    private handleAccelerateErrors(exception: Prisma.PrismaClientKnownRequestError): { status: HttpStatus; message: string } {
-        switch (exception.code) {
-            case 'P5011':
-                return { status: HttpStatus.TOO_MANY_REQUESTS, message: 'Trop de requêtes - Réessayez plus tard' };
-            case 'P6001':
-                return { status: HttpStatus.BAD_REQUEST, message: 'URL de source de données malformée' };
-            case 'P6002':
-                return { status: HttpStatus.UNAUTHORIZED, message: 'Clé API invalide' };
-            case 'P6003':
-                return { status: HttpStatus.PAYMENT_REQUIRED, message: 'Limite du plan dépassée' };
-            case 'P6004':
-                return { status: HttpStatus.REQUEST_TIMEOUT, message: 'Timeout global d\'Accelerate dépassé' };
-            case 'P6005':
-                return { status: HttpStatus.BAD_REQUEST, message: 'Paramètres invalides fournis' };
-            case 'P6006':
-                return { status: HttpStatus.BAD_REQUEST, message: 'Version Prisma non compatible avec Accelerate' };
-            case 'P6008':
-                return { status: HttpStatus.SERVICE_UNAVAILABLE, message: 'Échec du démarrage du moteur' };
-            case 'P6009':
-                return { status: HttpStatus.PAYLOAD_TOO_LARGE, message: 'Limite de taille de réponse dépassée' };
-            case 'P6010':
-                return { status: HttpStatus.FORBIDDEN, message: 'Projet Accelerate désactivé' };
-            default:
-                return { status: HttpStatus.SERVICE_UNAVAILABLE, message: 'Erreur Prisma Accelerate' };
-        }
     }
 
     private getUniqueConstraintMessage(exception: Prisma.PrismaClientKnownRequestError): string {

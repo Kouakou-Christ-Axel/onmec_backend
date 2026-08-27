@@ -1,6 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { StatutMembre } from '../../../generated/prisma/client';
-import { Type } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class SearchUserDto {
@@ -33,7 +32,6 @@ export class SearchUserDto {
 
   @ApiPropertyOptional({ description: 'Page courante', example: 1, default: 1 })
   @IsOptional()
-  @Type(() => Number)
   @IsInt()
   @Min(1)
   page?: number = 1;
@@ -45,7 +43,6 @@ export class SearchUserDto {
     maximum: 100,
   })
   @IsOptional()
-  @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(100)

@@ -14,8 +14,6 @@ import { ForgotPasswordDto } from '../dto/forgot-password.dto';
 import { ResetPasswordDto } from '../dto/reset-password.dto';
 import { AuthResponse, AuthService, OTP_TTL_MS } from './auth.service';
 import { EmailService } from './email.service';
-import { totp, authenticator } from 'otplib';
-import { OTP_STEP_SECONDS } from './auth.service';
 
 const INVALID_CREDENTIALS = 'Identifiants invalides';
 
@@ -35,17 +33,6 @@ export class AdminAuthService {
     private readonly emailService: EmailService,
     private readonly authService: AuthService,
   ) {}
-
-  private generateOtp(): { secret: string; otp: string } {
-    const secret = authenticator.generateSecret(20);
-    totp.options = { step: OTP_STEP_SECONDS, digits: 6, window: 1 };
-    return { secret, otp: totp.generate(secret) };
-  }
-
-  private checkOtp(secret: string, otp: string): boolean {
-    totp.options = { step: OTP_STEP_SECONDS, digits: 6, window: 1 };
-    return totp.verify({ token: otp, secret });
-  }
 
   /**
    * Connexion back-office.
@@ -158,7 +145,7 @@ export class AdminAuthService {
         return generic;
       }
 
-      const { secret, otp } = this.generateOtp();
+      const { secret, otp } = this.authService.generateOtp();
 
       await this.prisma.admin.update({
         where: { id: admin.id },
@@ -205,7 +192,7 @@ export class AdminAuthService {
     if (admin.otpExpiresAt && admin.otpExpiresAt.getTime() < Date.now()) {
       throw invalid;
     }
-    if (!this.checkOtp(admin.otpSecret, dto.otp)) {
+    if (!this.authService.checkOtp(admin.otpSecret, dto.otp)) {
       throw invalid;
     }
 
