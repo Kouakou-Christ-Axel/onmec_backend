@@ -4,8 +4,8 @@ import { IsNotEmpty, IsString } from 'class-validator';
 /** Corps de la demande d'URL présignée pour une image du corps d'un article. */
 export class UploadImageRequestDto {
   @ApiProperty({
-    description: "Nom du fichier tel qu'il sera envoyé au client (utilisé pour son extension)",
-    example: 'photo.jpg',
+    description: "Nom du fichier tel qu'il sera envoyé au client (utilisé pour son extension). Le front redimensionne et convertit les images en WebP avant l'upload.",
+    example: 'photo.webp',
   })
   @IsString()
   @IsNotEmpty()
@@ -13,7 +13,7 @@ export class UploadImageRequestDto {
 
   @ApiProperty({
     description: 'Type MIME du fichier, figé dans la signature de l’URL présignée',
-    example: 'image/jpeg',
+    example: 'image/webp',
   })
   @IsString()
   @IsNotEmpty()

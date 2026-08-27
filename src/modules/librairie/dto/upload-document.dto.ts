@@ -10,7 +10,8 @@ export enum DocumentUploadKind {
 /** Corps de la demande d'URL présignée pour un document ou sa couverture. */
 export class UploadDocumentRequestDto {
   @ApiProperty({
-    description: "Nom du fichier tel qu'il sera envoyé au client (utilisé pour son extension)",
+    description:
+      "Nom du fichier tel qu'il sera envoyé au client (utilisé pour son extension). Pour kind=cover, le front redimensionne et convertit l'image en WebP avant l'upload (ex. couverture.webp).",
     example: 'rapport-annuel.pdf',
   })
   @IsString()
