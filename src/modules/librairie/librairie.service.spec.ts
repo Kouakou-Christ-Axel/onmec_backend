@@ -76,6 +76,48 @@ describe('LibrairieService', () => {
     });
   });
 
+  // Document.uploadedById est nullable : un document dont l'administrateur a
+  // ete supprime faisait tomber en 500 tout GET /librairie qui le contenait.
+  describe('documentToDto face à un uploader supprimé', () => {
+    const documentToDto = (document: unknown) =>
+      (service as any).documentToDto(document);
+
+    const documentSansUploader = {
+      id: 'doc-1',
+      title: 'Rapport annuel',
+      description: null,
+      categorie: null,
+      coverImage: null,
+      fileType: '.pdf',
+      pageCount: 42,
+      uploadedAt: new Date('2026-01-24T10:30:00Z'),
+      uploadedBy: null,
+    };
+
+    it('renvoie uploadedBy à null au lieu de lever', () => {
+      expect(documentToDto(documentSansUploader).uploadedBy).toBeNull();
+    });
+
+    it('laisse les autres champs intacts', () => {
+      const dto = documentToDto(documentSansUploader);
+      expect(dto.id).toBe('doc-1');
+      expect(dto.title).toBe('Rapport annuel');
+      expect(dto.pageCount).toBe(42);
+    });
+
+    it('expose l’uploader quand il existe encore', () => {
+      const dto = documentToDto({
+        ...documentSansUploader,
+        uploadedBy: { id: 'a-1', fullname: 'Awa Koné', email: 'awa@mec-ci.org' },
+      });
+      expect(dto.uploadedBy).toEqual({
+        id: 'a-1',
+        fullname: 'Awa Koné',
+        email: 'awa@mec-ci.org',
+      });
+    });
+  });
+
   describe('create', () => {
     it('refuse une coverKey appartenant à un autre document que fichierKey', async () => {
       await expect(

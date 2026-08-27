@@ -6043,7 +6043,8 @@
           },
           "uploadedBy": {
             "type": "object",
-            "description": "Informations de l'utilisateur ayant uploadé"
+            "description": "Informations de l'administrateur ayant uploadé. `null` quand le compte a été supprimé depuis : la relation Document.uploadedById est optionnelle côté schéma.",
+            "nullable": true
           }
         },
         "required": [
