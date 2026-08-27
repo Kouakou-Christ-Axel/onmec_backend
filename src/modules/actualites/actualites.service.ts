@@ -1,14 +1,18 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { promises as fs } from 'fs';
-import { join } from 'path';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { extname } from 'path';
 import { CreateActualiteDto } from './dto/create-actualite.dto';
 import { UpdateActualiteDto } from './dto/update-actualite.dto';
+import { UploadImageResponseDto } from './dto/upload-image.dto';
 import { PrismaService } from 'src/database/services/prisma.service';
 import slugify from '../../../utils/slugify';
 import { ActualitesSearchDto } from './dto/actualites-search.dto';
 import { Prisma, StatutActualite } from '../../generated/prisma/client';
 import { ActualiteEntity } from './entities/actualite.entity';
-import { ConfigService } from '@nestjs/config';
 import { EngagementService } from '../engagement/engagement.service';
 import {
   NOTIFICATION_TYPE,
@@ -19,6 +23,9 @@ import {
   isAdminActor,
 } from 'src/common/types/authenticated-actor';
 import { AdminRole } from '../../generated/prisma/client';
+import { GenerateConfigService } from 'src/common/services/generate-config.service';
+import { GenerateDataService } from 'src/common/services/generate-data.service';
+import { R2StorageService } from 'src/common/services/r2-storage.service';
 
 /** Rôles autorisés à voir et manipuler les brouillons. */
 const EDITORIAL_ROLES: string[] = [
@@ -26,7 +33,8 @@ const EDITORIAL_ROLES: string[] = [
   AdminRole.CHARGE_COMMUNICATION,
 ];
 
-const UPLOAD_ROOT = join(__dirname, '..', '..', '..', '..', 'uploads');
+/** Durée de validité des URL présignées d'upload, en secondes. */
+const UPLOAD_EXPIRES_IN = 300;
 
 /** Borne du prefiltre de recherche plein texte. */
 const SEARCH_ID_LIMIT = 500;
@@ -55,9 +63,9 @@ export class ActualitesService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly configService: ConfigService,
     private readonly engagementService: EngagementService,
     private readonly notifications: NotificationService,
+    private readonly r2Service: R2StorageService,
   ) {}
 
   /**
@@ -185,12 +193,12 @@ export class ActualitesService {
   async create(
     createActualiteDto: CreateActualiteDto,
     author: AuthenticatedActor,
-    image?: Express.Multer.File,
   ) {
-    const imageUrl = image ? `/uploads/actualites/${image.filename}` : null;
+    const imageUrl = createActualiteDto.imageKey ?? null;
     // `tags` est une liste de noms, pas une colonne : il ne peut pas etre
-    // repandu tel quel dans `data`.
-    const { tags, ...champs } = createActualiteDto;
+    // repandu tel quel dans `data`. `imageKey` non plus : la colonne
+    // s'appelle `imageUrl` et porte desormais la cle R2, pas un chemin.
+    const { tags, imageKey: _imageKey, ...champs } = createActualiteDto;
 
     const write = async () => {
       const slug = await this.generateUniqueSlug(createActualiteDto.title);
@@ -355,14 +363,10 @@ export class ActualitesService {
     return { ...actualite, ...entry };
   }
 
-  async update(
-    id: string,
-    updateActualiteDto: UpdateActualiteDto,
-    image?: Express.Multer.File,
-  ) {
+  async update(id: string, updateActualiteDto: UpdateActualiteDto) {
     const actualite = await this.assertExists(id);
 
-    const { tags, categorieId, ...champs } = updateActualiteDto;
+    const { tags, categorieId, imageKey, ...champs } = updateActualiteDto;
     const updateData: Prisma.ActualiteUpdateInput = { ...champs };
 
     if (categorieId !== undefined) {
@@ -375,8 +379,8 @@ export class ActualitesService {
       updateData.tags = { set: [], ...this.tagsInput(tags) };
     }
 
-    if (image) {
-      updateData.imageUrl = `/uploads/actualites/${image.filename}`;
+    if (imageKey !== undefined) {
+      updateData.imageUrl = imageKey;
     }
 
     if (updateActualiteDto.title) {
@@ -392,10 +396,10 @@ export class ActualitesService {
       include: ACTUALITE_INCLUDE,
     });
 
-    // L'ancien fichier n'était jamais supprimé : chaque remplacement d'image
-    // laissait un orphelin définitif sur le disque.
-    if (image && actualite.imageUrl) {
-      await this.deleteUploadedFile(actualite.imageUrl);
+    // L'ancien objet R2 n'etait jamais supprime : chaque remplacement d'image
+    // laissait un orphelin definitif dans le bucket.
+    if (imageKey !== undefined && actualite.imageUrl) {
+      await this.deleteR2Object(actualite.imageUrl);
     }
 
     return this.withEngagement(this.mapToEntity(updated), updated.id);
@@ -496,17 +500,25 @@ export class ActualitesService {
     return actualite;
   }
 
+  /**
+   * Extrait la clé objet R2 depuis la valeur stockée en base.
+   *
+   * Les lignes migrées avant le script de migration `/uploads` -> R2 portent
+   * encore un chemin `/uploads/actualites/...` ; les nouvelles portent
+   * directement la clé. Les deux formes sont acceptées le temps de la
+   * transition.
+   */
+  private extractImageKey(imageUrl: string): string {
+    return imageUrl.replace(/^\/?uploads\//, '');
+  }
+
   /** Suppression best-effort : l'échec ne doit pas faire échouer la requête. */
-  private async deleteUploadedFile(imageUrl: string) {
+  private async deleteR2Object(imageUrl: string) {
     try {
-      const relative = imageUrl.replace(/^\/uploads\//, '');
-      // Empêche un `..` dans le chemin stocké de faire sortir du dossier.
-      const target = join(UPLOAD_ROOT, relative);
-      if (!target.startsWith(UPLOAD_ROOT)) return;
-      await fs.unlink(target);
+      await this.r2Service.delete(this.extractImageKey(imageUrl));
     } catch (error) {
       this.logger.warn(
-        `Impossible de supprimer le fichier ${imageUrl}: ${(error as Error).message}`,
+        `Impossible de supprimer l'objet R2 ${imageUrl}: ${(error as Error).message}`,
       );
     }
   }
@@ -514,43 +526,45 @@ export class ActualitesService {
   private mapToEntity(actualite: any): ActualiteEntity {
     const entity = new ActualiteEntity();
     Object.assign(entity, actualite);
-    return this.addCdnUrl(entity);
+    return this.addPublicUrl(entity);
   }
 
-  private addCdnUrl(actualite: ActualiteEntity) {
+  private addPublicUrl(actualite: ActualiteEntity) {
     if (!actualite.imageUrl) return actualite;
     return {
       ...actualite,
-      imageUrl: this.prefixCdnUrl(actualite.imageUrl),
+      imageUrl: this.r2Service.getPublicUrl(actualite.imageUrl),
     };
   }
 
   /**
-   * Préfixe un chemin relatif par l'URL du CDN.
+   * Génère une URL présignée pour une image du corps d'un article.
    *
-   * Normalise le join pour éviter les doubles slashes (ex: "https://host/" + "/uploads/..."),
-   * qui font échouer le service de fichiers statiques et déclenchent ERR_BLOCKED_BY_ORB côté navigateur.
+   * Stockée sous un préfixe dédié (`actualites/contenu/`), distinct de celui
+   * des couvertures, pour ne pas mélanger les fichiers d'illustration du
+   * corps de texte avec les images de couverture des actualités. Pas de
+   * finalisation séparée : une fois le PUT réussi, le client construit
+   * lui-même l'URL publique depuis la clé.
    */
-  private prefixCdnUrl(relativePath: string): string {
-    const cdnUrl = (this.configService.get<string>('CDN_URL') || '').replace(
-      /\/+$/,
-      '',
-    );
-    const path = relativePath.startsWith('/')
-      ? relativePath
-      : `/${relativePath}`;
-    return `${cdnUrl}${path}`;
-  }
+  async buildContentImageUrl(
+    filename: string,
+    contentType: string,
+  ): Promise<UploadImageResponseDto> {
+    if (!filename.match(GenerateConfigService.ALLOWED_IMAGE_EXT)) {
+      throw new BadRequestException(
+        'Seuls les fichiers image sont acceptés (jpg, jpeg, png, gif, webp, heic, heif)',
+      );
+    }
 
-  /**
-   * Construit l'URL d'une image téléversée pour le corps d'un article.
-   *
-   * Stockée dans un sous-dossier dédié (`contenu`), distinct de celui des
-   * couvertures, pour ne pas mélanger les fichiers d'illustration du corps
-   * de texte avec les images de couverture des actualités.
-   */
-  buildContentImageUrl(image: Express.Multer.File): { url: string } {
-    const relativePath = `/uploads/actualites/contenu/${image.filename}`;
-    return { url: this.prefixCdnUrl(relativePath) };
+    const ext = extname(filename);
+    const name = await GenerateDataService.generateSecureImageName(filename);
+    const key = `actualites/contenu/${name}${ext}`;
+    const uploadUrl = await this.r2Service.getUploadUrl(
+      key,
+      contentType,
+      UPLOAD_EXPIRES_IN,
+    );
+
+    return { key, uploadUrl, expiresIn: UPLOAD_EXPIRES_IN };
   }
 }

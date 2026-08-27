@@ -12,8 +12,8 @@ import {
 } from 'class-validator';
 
 export class CreateActualiteDto {
-  // `@Type(() => Date)` est nécessaire : la requête est en multipart, donc
-  // tous les champs arrivent en chaîne de caractères.
+  // `@Type(() => Date)` est nécessaire : JSON ne transporte pas de type Date,
+  // la valeur arrive en chaîne de caractères ISO.
   @ApiProperty({
     description: "Date de l'actualité",
     example: '2026-10-15T14:48:00.000Z',
@@ -82,13 +82,12 @@ export class CreateActualiteDto {
   @ArrayMaxSize(10)
   tags?: string[];
 
-  // Déclaré uniquement pour que Swagger expose le champ fichier : la valeur
-  // est lue par FileInterceptor, pas par le corps de requête.
-  @ApiProperty({
-    description: "Image de couverture de l'actualité",
-    required: false,
-    type: 'file' as 'string',
+  @ApiPropertyOptional({
+    description:
+      "Clé R2 de l'image de couverture, obtenue via une demande d'URL présignée préalable",
+    example: 'actualites/contenu/1732000000000.jpg',
   })
   @IsOptional()
-  image?: any;
+  @IsString()
+  imageKey?: string;
 }

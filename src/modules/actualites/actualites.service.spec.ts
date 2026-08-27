@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConfigService } from '@nestjs/config';
 import { ActualitesService } from './actualites.service';
 import { PrismaService } from '../../database/services/prisma.service';
 import { EngagementService } from '../engagement/engagement.service';
 import { NotificationService } from '../notification/notification.service';
+import { R2StorageService } from '../../common/services/r2-storage.service';
 import { AdminRole, StatutActualite } from '../../generated/prisma/client';
 import {
   AuthenticatedActor,
@@ -13,17 +13,23 @@ import {
 describe('ActualitesService', () => {
   let service: ActualitesService;
 
-  const buildService = async (cdnUrl: string) => {
+  const buildService = async (publicUrl: string) => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ActualitesService,
         { provide: PrismaService, useValue: {} },
-        { provide: ConfigService, useValue: { get: () => cdnUrl } },
         // Sans ce provider, le module de test ne compilait pas et toute la
         // suite échouait.
         { provide: EngagementService, useValue: {} },
         // Le service diffuse une notification a la premiere publication.
         { provide: NotificationService, useValue: {} },
+        {
+          provide: R2StorageService,
+          useValue: {
+            getPublicUrl: (key: string) =>
+              `${publicUrl.replace(/\/+$/, '')}/${key.replace(/^\/+/, '')}`,
+          },
+        },
       ],
     }).compile();
 
@@ -52,31 +58,24 @@ describe('ActualitesService', () => {
     }) as AuthenticatedActor;
 
   beforeEach(async () => {
-    service = await buildService('https://admin.mec-ci.org');
+    service = await buildService('https://cdn.mec-ci.org');
   });
 
   it('should be defined', () => {
     expect(service).toBeDefined();
   });
 
-  describe('construction des URLs CDN', () => {
-    it("préfixe l'imageUrl avec le CDN_URL", () => {
-      expect(mapImageUrl(service, '/uploads/actualites/img.png')).toBe(
-        'https://admin.mec-ci.org/uploads/actualites/img.png',
+  describe("construction de l'URL publique R2", () => {
+    it("préfixe l'imageUrl (clé objet) avec R2_PUBLIC_URL", () => {
+      expect(mapImageUrl(service, 'actualites/img.png')).toBe(
+        'https://cdn.mec-ci.org/actualites/img.png',
       );
     });
 
-    it('évite le double slash quand CDN_URL se termine par "/"', async () => {
-      const svc = await buildService('https://admin.mec-ci.org/');
-      expect(mapImageUrl(svc, '/uploads/actualites/img.png')).toBe(
-        'https://admin.mec-ci.org/uploads/actualites/img.png',
-      );
-    });
-
-    it('ajoute un slash manquant entre le CDN_URL et le chemin', async () => {
-      const svc = await buildService('https://admin.mec-ci.org');
-      expect(mapImageUrl(svc, 'uploads/actualites/img.png')).toBe(
-        'https://admin.mec-ci.org/uploads/actualites/img.png',
+    it('évite le double slash quand R2_PUBLIC_URL se termine par "/"', async () => {
+      const svc = await buildService('https://cdn.mec-ci.org/');
+      expect(mapImageUrl(svc, 'actualites/img.png')).toBe(
+        'https://cdn.mec-ci.org/actualites/img.png',
       );
     });
 
@@ -85,14 +84,33 @@ describe('ActualitesService', () => {
     });
   });
 
-  describe("construction de l'URL image de contenu", () => {
-    it("construit l'URL CDN dans le sous-dossier contenu", async () => {
-      const svc = await buildService('https://admin.mec-ci.org');
-      expect(
-        svc.buildContentImageUrl({ filename: 'x.png' } as Express.Multer.File),
-      ).toEqual({
-        url: 'https://admin.mec-ci.org/uploads/actualites/contenu/x.png',
-      });
+  describe("génération de l'URL présignée pour une image de contenu", () => {
+    it('génère une clé sous actualites/contenu/ et retourne uploadUrl + expiresIn', async () => {
+      const svc = await buildService('https://cdn.mec-ci.org');
+      const r2 = (svc as any).r2Service as {
+        getUploadUrl: jest.Mock;
+      };
+      r2.getUploadUrl = jest
+        .fn()
+        .mockResolvedValue('https://r2.example/put-url');
+
+      const result = await svc.buildContentImageUrl('photo.png', 'image/png');
+
+      expect(result.key).toMatch(/^actualites\/contenu\/.+\.png$/);
+      expect(result.uploadUrl).toBe('https://r2.example/put-url');
+      expect(result.expiresIn).toBe(300);
+      expect(r2.getUploadUrl).toHaveBeenCalledWith(
+        result.key,
+        'image/png',
+        300,
+      );
+    });
+
+    it('rejette une extension non autorisée', async () => {
+      const svc = await buildService('https://cdn.mec-ci.org');
+      await expect(
+        svc.buildContentImageUrl('malware.exe', 'application/octet-stream'),
+      ).rejects.toThrow('Seuls les fichiers image sont acceptés');
     });
   });
 
