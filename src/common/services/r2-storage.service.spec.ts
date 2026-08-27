@@ -52,6 +52,40 @@ describe('R2StorageService', () => {
     );
   });
 
+  it('presignImage() range la clé sous le dossier demandé et conserve l’extension', async () => {
+    const service = await buildService(fullEnv);
+    const result = await service.presignImage(
+      'actualites/contenu',
+      'photo.png',
+      'image/png',
+    );
+
+    expect(result.key).toMatch(/^actualites\/contenu\/[^/]+\.png$/);
+    expect(result.uploadUrl).toContain('bucket123');
+    expect(result.expiresIn).toBe(300);
+  });
+
+  it('presignImage() génère une clé différente à chaque appel', async () => {
+    const service = await buildService(fullEnv);
+    const [a, b] = await Promise.all([
+      service.presignImage('actualites', 'photo.png', 'image/png'),
+      service.presignImage('actualites', 'photo.png', 'image/png'),
+    ]);
+
+    expect(a.key).not.toBe(b.key);
+  });
+
+  it('presignImage() rejette une extension non autorisée', async () => {
+    const service = await buildService(fullEnv);
+    await expect(
+      service.presignImage(
+        'actualites',
+        'malware.exe',
+        'application/octet-stream',
+      ),
+    ).rejects.toThrow('Seuls les fichiers image sont acceptés');
+  });
+
   it("getPublicUrl() construit l'URL publique à partir de la clé", async () => {
     const service = await buildService(fullEnv);
     expect(service.getPublicUrl('actualites/img.png')).toBe(

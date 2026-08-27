@@ -84,49 +84,25 @@ describe('ActualitesService', () => {
     });
   });
 
-  describe("génération de l'URL présignée pour une image de contenu", () => {
-    it('génère une clé sous actualites/contenu/ et retourne uploadUrl + expiresIn', async () => {
+  // Le contrôle d'extension et la génération de clé vivent desormais dans
+  // R2StorageService.presignImage (voir r2-storage.service.spec.ts). Ici on
+  // verifie seulement que chaque flux vise le bon dossier.
+  describe("dossier vise par les URL présignées d'image", () => {
+    it.each([
+      ['buildContentImageUrl', 'actualites/contenu'],
+      ['buildCoverImageUrl', 'actualites'],
+    ])('%s cible %s', async (methode, dossier) => {
       const svc = await buildService('https://cdn.mec-ci.org');
-      const r2 = (svc as any).r2Service as {
-        getUploadUrl: jest.Mock;
-      };
-      r2.getUploadUrl = jest
-        .fn()
-        .mockResolvedValue('https://r2.example/put-url');
+      const r2 = (svc as any).r2Service as { presignImage: jest.Mock };
+      r2.presignImage = jest.fn().mockResolvedValue({});
 
-      const result = await svc.buildContentImageUrl('photo.png', 'image/png');
+      await svc[methode]('photo.png', 'image/png');
 
-      expect(result.key).toMatch(/^actualites\/contenu\/.+\.png$/);
-      expect(result.uploadUrl).toBe('https://r2.example/put-url');
-      expect(result.expiresIn).toBe(300);
-      expect(r2.getUploadUrl).toHaveBeenCalledWith(
-        result.key,
+      expect(r2.presignImage).toHaveBeenCalledWith(
+        dossier,
+        'photo.png',
         'image/png',
-        300,
       );
-    });
-
-    it('rejette une extension non autorisée', async () => {
-      const svc = await buildService('https://cdn.mec-ci.org');
-      await expect(
-        svc.buildContentImageUrl('malware.exe', 'application/octet-stream'),
-      ).rejects.toThrow('Seuls les fichiers image sont acceptés');
-    });
-  });
-
-  describe("génération de l'URL présignée pour une image de couverture", () => {
-    it('génère une clé sous actualites/ (pas actualites/contenu/)', async () => {
-      const svc = await buildService('https://cdn.mec-ci.org');
-      const r2 = (svc as any).r2Service as { getUploadUrl: jest.Mock };
-      r2.getUploadUrl = jest
-        .fn()
-        .mockResolvedValue('https://r2.example/put-url');
-
-      const result = await svc.buildCoverImageUrl('photo.png', 'image/png');
-
-      expect(result.key).toMatch(/^actualites\/[^/]+\.png$/);
-      expect(result.uploadUrl).toBe('https://r2.example/put-url');
-      expect(result.expiresIn).toBe(300);
     });
   });
 

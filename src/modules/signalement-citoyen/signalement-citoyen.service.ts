@@ -14,12 +14,9 @@ import {
 	NOTIFICATION_TYPE,
 	NotificationService,
 } from '../notification/notification.service';
-import {GenerateDataService} from '../../common/services/generate-data.service';
-import {GenerateConfigService} from '../../common/services/generate-config.service';
 import {R2StorageService} from '../../common/services/r2-storage.service';
 
 /** Durée de validité des URL présignées d'upload de photo, en secondes. */
-const PHOTO_UPLOAD_EXPIRES_IN = 300;
 
 @Injectable()
 export class SignalementCitoyenService {
@@ -97,26 +94,11 @@ export class SignalementCitoyenService {
 	}
 
 	/** Génère une URL présignée pour la photo d'un signalement. */
-	async buildPhotoUploadUrl(
+	buildPhotoUploadUrl(
 		filename: string,
 		contentType: string,
 	): Promise<UploadSignalementPhotoResponseDto> {
-		if (!filename.match(GenerateConfigService.ALLOWED_IMAGE_EXT)) {
-			throw new BadRequestException(
-				'Seuls les fichiers image sont acceptés (jpg, jpeg, png, gif, webp, heic, heif)',
-			);
-		}
-
-		const ext = extname(filename);
-		const name = await GenerateDataService.generateSecureImageName(filename);
-		const key = `signalements/${name}${ext}`;
-		const uploadUrl = await this.r2Service.getUploadUrl(
-			key,
-			contentType,
-			PHOTO_UPLOAD_EXPIRES_IN,
-		);
-
-		return {key, uploadUrl, expiresIn: PHOTO_UPLOAD_EXPIRES_IN};
+		return this.r2Service.presignImage('signalements', filename, contentType);
 	}
 
 	/**

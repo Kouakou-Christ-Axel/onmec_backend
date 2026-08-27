@@ -23,8 +23,6 @@ import {
   isAdminActor,
 } from 'src/common/types/authenticated-actor';
 import { AdminRole } from '../../generated/prisma/client';
-import { GenerateConfigService } from 'src/common/services/generate-config.service';
-import { GenerateDataService } from 'src/common/services/generate-data.service';
 import { R2StorageService } from 'src/common/services/r2-storage.service';
 
 /** Rôles autorisés à voir et manipuler les brouillons. */
@@ -34,7 +32,6 @@ const EDITORIAL_ROLES: string[] = [
 ];
 
 /** Durée de validité des URL présignées d'upload, en secondes. */
-const UPLOAD_EXPIRES_IN = 300;
 
 /** Borne du prefiltre de recherche plein texte. */
 const SEARCH_ID_LIMIT = 500;
@@ -566,36 +563,23 @@ export class ActualitesService {
    * préfixe change. Pas de finalisation séparée : une fois le PUT réussi, le
    * client construit lui-même l'URL publique depuis la clé.
    */
-  private async presignImageUpload(
-    folder: string,
+  /** Image du corps d'un article, distincte de la couverture. */
+  buildContentImageUrl(
     filename: string,
     contentType: string,
   ): Promise<UploadImageResponseDto> {
-    if (!filename.match(GenerateConfigService.ALLOWED_IMAGE_EXT)) {
-      throw new BadRequestException(
-        'Seuls les fichiers image sont acceptés (jpg, jpeg, png, gif, webp, heic, heif)',
-      );
-    }
-
-    const ext = extname(filename);
-    const name = await GenerateDataService.generateSecureImageName(filename);
-    const key = `${folder}/${name}${ext}`;
-    const uploadUrl = await this.r2Service.getUploadUrl(
-      key,
+    return this.r2Service.presignImage(
+      'actualites/contenu',
+      filename,
       contentType,
-      UPLOAD_EXPIRES_IN,
     );
-
-    return { key, uploadUrl, expiresIn: UPLOAD_EXPIRES_IN };
-  }
-
-  /** Image du corps d'un article, distincte de la couverture. */
-  buildContentImageUrl(filename: string, contentType: string) {
-    return this.presignImageUpload('actualites/contenu', filename, contentType);
   }
 
   /** Image de couverture d'une actualité. */
-  buildCoverImageUrl(filename: string, contentType: string) {
-    return this.presignImageUpload('actualites', filename, contentType);
+  buildCoverImageUrl(
+    filename: string,
+    contentType: string,
+  ): Promise<UploadImageResponseDto> {
+    return this.r2Service.presignImage('actualites', filename, contentType);
   }
 }

@@ -17,13 +17,11 @@ import { UpdateUserDto } from '../dto/update-user.dto';
 import { UpdateUserPasswordDto } from '../dto/update-user-password.dto';
 import { UpdateMemberStatutDto } from '../dto/update-member-statut.dto';
 import { GenerateDataService } from 'src/common/services/generate-data.service';
-import { GenerateConfigService } from 'src/common/services/generate-config.service';
 import { R2StorageService } from 'src/common/services/r2-storage.service';
 import { ResetUserPasswordResponseDto } from '../dto/reset-user-password.dto';
 import { UploadAvatarResponseDto } from '../dto/upload-avatar.dto';
 
 /** Durée de validité des URL présignées d'upload d'avatar, en secondes. */
-const AVATAR_UPLOAD_EXPIRES_IN = 300;
 
 /**
  * Champs exposables d'un membre.
@@ -113,26 +111,11 @@ export class UsersService {
   }
 
   /** Génère une URL présignée pour l'avatar d'un membre. */
-  async buildAvatarUploadUrl(
+  buildAvatarUploadUrl(
     filename: string,
     contentType: string,
   ): Promise<UploadAvatarResponseDto> {
-    if (!filename.match(GenerateConfigService.ALLOWED_IMAGE_EXT)) {
-      throw new BadRequestException(
-        'Seuls les fichiers image sont acceptés (jpg, jpeg, png, gif, webp, heic, heif)',
-      );
-    }
-
-    const ext = extname(filename);
-    const name = await GenerateDataService.generateSecureImageName(filename);
-    const key = `users-avatar/${name}${ext}`;
-    const uploadUrl = await this.r2Service.getUploadUrl(
-      key,
-      contentType,
-      AVATAR_UPLOAD_EXPIRES_IN,
-    );
-
-    return { key, uploadUrl, expiresIn: AVATAR_UPLOAD_EXPIRES_IN };
+    return this.r2Service.presignImage('users-avatar', filename, contentType);
   }
 
   /**
