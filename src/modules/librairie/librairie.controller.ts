@@ -29,9 +29,16 @@ import { UpdateDocumentDto } from './dto/update-document.dto';
 import { DocumentResponseDto, PublicDocumentResponseDto } from './dto/document-response.dto';
 import { UploadDocumentRequestDto, UploadDocumentResponseDto } from './dto/upload-document.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AdminGuard } from '../auth/guards/admin.guard';
+import { AdminRolesGuard } from '../auth/guards/admin-roles.guard';
+import { AdminRoles } from '../auth/decorators/admin-roles.decorator';
+import { AdminRole } from '../../generated/prisma/client';
 import { Request } from 'express';
 import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
 import { SearchDocumentDto } from './dto/search-document.dto';
+
+/** Rôles éditoriaux : gestion de la librairie de documents depuis le back-office. */
+const EDITORIAL = [AdminRole.ADMIN_NATIONAL, AdminRole.CHARGE_COMMUNICATION];
 
 @ApiTags('Librairie')
 @Controller('librairie')
@@ -39,7 +46,8 @@ export class LibrairieController {
   constructor(private readonly librairieService: LibrairieService) {}
 
   @Post('upload-url')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
+  @AdminRoles(...EDITORIAL)
   @ApiBearerAuth('JWT')
   @ApiOperation({
     summary: "Demander une URL présignée pour un document ou sa couverture",
@@ -58,7 +66,8 @@ export class LibrairieController {
   }
 
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
+  @AdminRoles(...EDITORIAL)
   @ApiBearerAuth('JWT')
   @ApiOperation({ summary: 'Créer un document', description: "Crée une nouvelle entrée de document à partir d'une clé de fichier (et éventuellement de couverture) déjà uploadée sur R2." })
   @ApiBody({ type: CreateDocumentDto })
@@ -75,6 +84,9 @@ export class LibrairieController {
   }
 
   @Get()
+  @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
+  @AdminRoles(...EDITORIAL)
+  @ApiBearerAuth('JWT')
   @ApiOperation({ summary: 'Liste des documents', description: 'Retourne les documents paginés avec filtres optionnels.' })
   @ApiOkResponse({
     description: 'Liste paginée de documents',
@@ -128,6 +140,9 @@ export class LibrairieController {
   }
 
   @Get(':id')
+  @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
+  @AdminRoles(...EDITORIAL)
+  @ApiBearerAuth('JWT')
   @ApiOperation({ summary: 'Détail d\'un document' })
   @ApiParam({ name: 'id', description: 'Identifiant du document', example: '550e8400-e29b-41d4-a716-446655440000' })
   @ApiOkResponse({ description: 'Document trouvé', type: DocumentResponseDto })
@@ -147,6 +162,9 @@ export class LibrairieController {
   }
 
   @Patch(':id')
+  @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
+  @AdminRoles(...EDITORIAL)
+  @ApiBearerAuth('JWT')
   @ApiOperation({ summary: 'Modifier un document' })
   @ApiParam({ name: 'id', description: 'Identifiant du document', example: '550e8400-e29b-41d4-a716-446655440000' })
   @ApiBody({ type: UpdateDocumentDto })
@@ -160,6 +178,9 @@ export class LibrairieController {
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
+  @AdminRoles(...EDITORIAL)
+  @ApiBearerAuth('JWT')
   @ApiOperation({ summary: 'Supprimer un document' })
   @ApiParam({ name: 'id', description: 'Identifiant du document', example: '550e8400-e29b-41d4-a716-446655440000' })
   @ApiOkResponse({ description: 'Document supprimé' })
