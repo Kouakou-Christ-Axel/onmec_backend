@@ -8,20 +8,19 @@ import {
   Patch,
   Post,
   Query,
-  UploadedFile,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
 import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
 import { ActualitesService } from './actualites.service';
 import { CreateActualiteDto } from './dto/create-actualite.dto';
 import { UpdateActualiteDto } from './dto/update-actualite.dto';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { GenerateConfigService } from '../../common/services/generate-config.service';
+import {
+  UploadImageRequestDto,
+  UploadImageResponseDto,
+} from './dto/upload-image.dto';
 import {
   ApiBearerAuth,
   ApiBody,
-  ApiConsumes,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -41,10 +40,6 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AdminRole } from '../../generated/prisma/client';
 import { ActualiteResponseDto } from './dto/actualite-response.dto';
 
-const IMAGE_UPLOAD = GenerateConfigService.generateConfigSingleImageUpload(
-  './uploads/actualites',
-);
-
 /** Rôles éditoriaux : rédaction et publication des actualités. */
 const EDITORIAL = [AdminRole.ADMIN_NATIONAL, AdminRole.CHARGE_COMMUNICATION];
 
@@ -60,24 +55,6 @@ const EDITORIAL = [AdminRole.ADMIN_NATIONAL, AdminRole.CHARGE_COMMUNICATION];
 export class ActualitesController {
   constructor(private readonly actualitesService: ActualitesService) {}
 
-  /**
-   * Compresse l'image televersee sur place.
-   *
-   * Les images d'actualites etaient stockees a leur taille d'origine, alors
-   * que le module users compressait deja les siennes. `deleteOriginal: true`
-   * sans `outputDir` reecrit le fichier au meme chemin, donc `image.filename`
-   * reste valide pour construire l'URL.
-   */
-  private async compressInPlace(image?: Express.Multer.File) {
-    if (!image?.path) return;
-    await GenerateConfigService.compressImages(
-      { img_1: image.path },
-      undefined,
-      { quality: 75, width: 1600, fit: 'inside' },
-      true,
-    );
-  }
-
   // ── RÉDACTION ────────────────────────────────────────────────────────────
 
   @Post()
@@ -89,7 +66,6 @@ export class ActualitesController {
     description:
       "Crée une actualité en BROUILLON. L'auteur est déduit du token, jamais du corps de requête. Publication par PATCH /actualites/:id/publier.",
   })
-  @ApiConsumes('multipart/form-data')
   @ApiBody({ type: CreateActualiteDto })
   @ApiResponse({
     status: HttpStatus.CREATED,
@@ -97,14 +73,11 @@ export class ActualitesController {
     type: ActualiteResponseDto,
   })
   @ApiForbiddenResponse({ description: 'Rôle éditorial requis' })
-  @UseInterceptors(FileInterceptor('image', IMAGE_UPLOAD))
   async create(
     @Body() createActualiteDto: CreateActualiteDto,
     @CurrentUser() actor: AuthenticatedActor,
-    @UploadedFile() image?: Express.Multer.File,
   ) {
-    await this.compressInPlace(image);
-    return this.actualitesService.create(createActualiteDto, actor, image);
+    return this.actualitesService.create(createActualiteDto, actor);
   }
 
   @Patch(':id')
@@ -113,18 +86,60 @@ export class ActualitesController {
   @ApiBearerAuth('JWT')
   @ApiOperation({ summary: 'Modifier une actualité' })
   @ApiParam({ name: 'id', description: "Identifiant de l'actualité" })
-  @ApiConsumes('multipart/form-data')
   @ApiBody({ type: UpdateActualiteDto })
   @ApiOkResponse({ description: 'Actualité mise à jour', type: ActualiteResponseDto })
   @ApiNotFoundResponse({ description: 'Actualité non trouvée' })
-  @UseInterceptors(FileInterceptor('image', IMAGE_UPLOAD))
   async update(
     @Param('id') id: string,
     @Body() updateActualiteDto: UpdateActualiteDto,
-    @UploadedFile() image?: Express.Multer.File,
   ) {
-    await this.compressInPlace(image);
-    return this.actualitesService.update(id, updateActualiteDto, image);
+    return this.actualitesService.update(id, updateActualiteDto);
+  }
+
+  @Post('upload-url')
+  @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
+  @AdminRoles(...EDITORIAL)
+  @ApiBearerAuth('JWT')
+  @ApiOperation({
+    summary: "Demander une URL présignée pour l'image de couverture",
+    description:
+      "Génère une clé d'objet sous `actualites/` (distincte du contenu, sous `actualites/contenu/`) et une URL PUT présignée. Le client envoie ensuite le fichier directement à R2, puis fournit la clé retournée en `imageKey` lors du POST/PATCH de l'actualité.",
+  })
+  @ApiBody({ type: UploadImageRequestDto })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: 'URL présignée générée',
+    type: UploadImageResponseDto,
+  })
+  @ApiForbiddenResponse({ description: 'Rôle éditorial requis' })
+  async uploadUrl(@Body() dto: UploadImageRequestDto) {
+    return this.actualitesService.buildCoverImageUrl(
+      dto.filename,
+      dto.contentType,
+    );
+  }
+
+  @Post('upload-image')
+  @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
+  @AdminRoles(...EDITORIAL)
+  @ApiBearerAuth('JWT')
+  @ApiOperation({
+    summary: "Demander une URL présignée pour une image du corps d'un article",
+    description:
+      "Génère une clé d'objet dans un sous-dossier dédié au contenu (distinct de la couverture) et une URL PUT présignée. Le client envoie ensuite le fichier directement à R2, puis construit lui-même l'URL publique pour l'insérer dans le corps de l'article via l'éditeur.",
+  })
+  @ApiBody({ type: UploadImageRequestDto })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: 'URL présignée générée',
+    type: UploadImageResponseDto,
+  })
+  @ApiForbiddenResponse({ description: 'Rôle éditorial requis' })
+  async uploadImage(@Body() dto: UploadImageRequestDto) {
+    return this.actualitesService.buildContentImageUrl(
+      dto.filename,
+      dto.contentType,
+    );
   }
 
   @Patch(':id/publier')

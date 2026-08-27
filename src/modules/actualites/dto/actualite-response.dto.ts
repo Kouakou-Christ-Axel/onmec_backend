@@ -47,7 +47,9 @@ export class ActualiteResponseDto {
   @ApiProperty({ example: '2026-04-21T08:00:00.000Z' })
   date: Date;
 
-  @ApiPropertyOptional({ example: '/uploads/actualites/pont-abidjan.jpg' })
+  @ApiPropertyOptional({
+    example: 'https://cdn.mec-ci.org/actualites/pont-abidjan.jpg',
+  })
   imageUrl?: string | null;
 
   @ApiProperty({ enum: StatutActualite, example: StatutActualite.PUBLIEE })

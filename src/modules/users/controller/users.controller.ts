@@ -4,32 +4,29 @@ import {
   Delete,
   ForbiddenException,
   Get,
+  HttpStatus,
   Param,
   Patch,
   Post,
   Query,
-  UploadedFile,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
   ApiConflictResponse,
-  ApiConsumes,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiResponse,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { AdminRole } from '../../../generated/prisma/client';
-import { GenerateConfigService } from 'src/common/services/generate-config.service';
 import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
 import { AdminGuard } from 'src/modules/auth/guards/admin.guard';
 import { AdminRolesGuard } from 'src/modules/auth/guards/admin-roles.guard';
@@ -44,12 +41,10 @@ import { SearchUserDto } from 'src/modules/users/dto/search-user.dto';
 import { UsersService } from 'src/modules/users/services/users.service';
 import { ResetUserPasswordResponseDto } from '../dto/reset-user-password.dto';
 import { UserResponseDto } from '../dto/user-response.dto';
-
-const AVATAR_UPLOAD = GenerateConfigService.generateConfigSingleImageUpload(
-  './uploads/users-avatar',
-);
-
-const AVATAR_COMPRESSION = { quality: 70, width: 600, fit: 'inside' } as const;
+import {
+  UploadAvatarRequestDto,
+  UploadAvatarResponseDto,
+} from '../dto/upload-avatar.dto';
 
 /**
  * Comptes membres.
@@ -68,62 +63,54 @@ const AVATAR_COMPRESSION = { quality: 70, width: 600, fit: 'inside' } as const;
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  private async resolveAvatar(image?: Express.Multer.File) {
-    if (!image?.path) return undefined;
-    const resized = await GenerateConfigService.compressImages(
-      { img_1: image.path },
-      undefined,
-      AVATAR_COMPRESSION,
-      true,
-    );
-    return resized?.['img_1'] ?? image.path;
-  }
-
   // ── ADMINISTRATION DES MEMBRES ───────────────────────────────────────────
+
+  @Post('avatar/upload-url')
+  @UseGuards(AdminGuard, AdminRolesGuard)
+  @AdminRoles(AdminRole.ADMIN_NATIONAL)
+  @ApiOperation({
+    summary: "Demander une URL présignée pour l'avatar d'un membre",
+    description:
+      "Génère une clé d'objet sous users-avatar/ et une URL PUT présignée. Le client envoie ensuite le fichier directement à R2, puis passe la clé retournée en avatarKey à POST /users ou PATCH /users.",
+  })
+  @ApiBody({ type: UploadAvatarRequestDto })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: 'URL présignée générée',
+    type: UploadAvatarResponseDto,
+  })
+  @ApiForbiddenResponse({ description: "Réservé à l'administrateur national" })
+  async uploadAvatarUrl(@Body() dto: UploadAvatarRequestDto) {
+    return this.usersService.buildAvatarUploadUrl(dto.filename, dto.contentType);
+  }
 
   @Post()
   @UseGuards(AdminGuard, AdminRolesGuard)
   @AdminRoles(AdminRole.ADMIN_NATIONAL)
-  @UseInterceptors(FileInterceptor('image', { ...AVATAR_UPLOAD }))
   @ApiOperation({
     summary: 'Créer un compte membre',
     description:
       "Réservé à l'administrateur national. Le mot de passe est généré par le serveur et retourné une seule fois. Cette route ne permet plus de créer un administrateur : les comptes back-office se créent via POST /admins.",
   })
-  @ApiConsumes('multipart/form-data')
   @ApiBody({ type: CreateUserDto })
   @ApiCreatedResponse({ description: 'Membre créé', type: UserResponseDto })
   @ApiConflictResponse({ description: 'Email déjà utilisé' })
   @ApiForbiddenResponse({ description: "Réservé à l'administrateur national" })
-  async create(
-    @Body() createUserDto: CreateUserDto,
-    @UploadedFile() image: Express.Multer.File,
-  ) {
-    return this.usersService.createMember({
-      ...createUserDto,
-      image: await this.resolveAvatar(image),
-    });
+  async create(@Body() createUserDto: CreateUserDto) {
+    return this.usersService.createMember(createUserDto);
   }
 
   @Post('member')
   @UseGuards(AdminGuard, AdminRolesGuard)
   @AdminRoles(AdminRole.ADMIN_NATIONAL)
-  @UseInterceptors(FileInterceptor('image', { ...AVATAR_UPLOAD }))
   @ApiOperation({
     summary: 'Créer un compte membre (alias de POST /users)',
   })
-  @ApiConsumes('multipart/form-data')
   @ApiBody({ type: CreateUserDto })
   @ApiCreatedResponse({ description: 'Membre créé', type: UserResponseDto })
   @ApiConflictResponse({ description: 'Email déjà utilisé' })
-  async createMember(
-    @Body() createUserDto: CreateUserDto,
-    @UploadedFile() image: Express.Multer.File,
-  ) {
-    return this.usersService.createMember({
-      ...createUserDto,
-      image: await this.resolveAvatar(image),
-    });
+  async createMember(@Body() createUserDto: CreateUserDto) {
+    return this.usersService.createMember(createUserDto);
   }
 
   // ── PROFIL DU COMPTE CONNECTÉ ────────────────────────────────────────────
@@ -264,22 +251,16 @@ export class UsersController {
   // ── SELF-SERVICE MEMBRE ──────────────────────────────────────────────────
 
   @Patch()
-  @UseInterceptors(FileInterceptor('image', { ...AVATAR_UPLOAD }))
   @ApiOperation({ summary: 'Mettre à jour mon profil' })
-  @ApiConsumes('multipart/form-data')
   @ApiBody({ type: UpdateUserDto })
   @ApiOkResponse({ description: 'Profil mis à jour', type: UserResponseDto })
   @ApiBadRequestResponse({ description: 'Données invalides' })
   async update(
     @CurrentUser() actor: AuthenticatedActor,
     @Body() updateUserDto: UpdateUserDto,
-    @UploadedFile() image: Express.Multer.File,
   ) {
     this.assertMember(actor);
-    return this.usersService.update(actor, {
-      ...updateUserDto,
-      image: await this.resolveAvatar(image),
-    });
+    return this.usersService.update(actor, updateUserDto);
   }
 
   @Patch('password')

@@ -9,22 +9,23 @@ import {
 	Post,
 	Query,
 	Req,
-	UploadedFiles,
 	UseGuards,
-	UseInterceptors,
 } from '@nestjs/common';
 import {SignalementCitoyenService} from './signalement-citoyen.service';
 import {CreateSignalementCitoyenDto} from './dto/signalement-citoyen-dto/create-signalement-citoyen.dto';
 import {UpdateSignalementCitoyenDto} from './dto/signalement-citoyen-dto/update-signalement-citoyen.dto';
+import {
+	UploadSignalementPhotoRequestDto,
+	UploadSignalementPhotoResponseDto,
+} from './dto/signalement-citoyen-dto/upload-signalement-photo.dto';
 import {Request} from 'express';
 import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
 import {SearchSignalementCitoyenDto} from './dto/signalement-citoyen-dto/search-signalement-citoyen.dto';
-import {ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiParam, ApiResponse, ApiTags,} from '@nestjs/swagger';
+import {ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags,} from '@nestjs/swagger';
 import {SignalementCitoyenDto} from './dto/signalement-citoyen-dto/signalement-citoyen.dto';
 import {JwtAuthGuard} from '../auth/guards/jwt-auth.guard';
 import {OptionalJwtAuthGuard} from '../auth/guards/optional-jwt-auth.guard';
 import {AdminGuard} from '../auth/guards/admin.guard';
-import {FilesInterceptor} from '@nestjs/platform-express';
 
 @ApiTags('Signalement Citoyen')
 @ApiBearerAuth('JWT')
@@ -35,17 +36,37 @@ export class SignalementCitoyenController {
 	) {
 	}
 
+	@Post('upload-url')
+	@UseGuards(JwtAuthGuard)
+	@ApiOperation({
+		summary: 'Demander une URL présignée pour la photo d’un signalement',
+		description:
+			"Génère une clé d'objet sous signalements/ et une URL PUT présignée. Le client envoie ensuite le fichier directement à R2, puis fournit la clé retournée en photoKey à POST /signalement-citoyen ou PATCH /signalement-citoyen/:id.",
+	})
+	@ApiBody({type: UploadSignalementPhotoRequestDto})
+	@ApiResponse({
+		status: HttpStatus.CREATED,
+		description: 'URL présignée générée',
+		type: UploadSignalementPhotoResponseDto,
+	})
+	@ApiResponse({
+		status: HttpStatus.UNAUTHORIZED,
+		description: 'Non authentifié',
+	})
+	async uploadPhotoUrl(@Body() dto: UploadSignalementPhotoRequestDto) {
+		return this.signalementCitoyenService.buildPhotoUploadUrl(
+			dto.filename,
+			dto.contentType,
+		);
+	}
+
 	@Post()
 	@UseGuards(JwtAuthGuard)
-	@UseInterceptors(FilesInterceptor('photo', 1, {
-		dest: './uploads/tmp/signalements',
-	}))
 	@ApiOperation({
 		summary: 'Créer un nouveau signalement citoyen',
 		description:
-			'Permet à un citoyen authentifié de créer un signalement pour un problème rencontré dans sa ville',
+			'Permet à un citoyen authentifié de créer un signalement pour un problème rencontré dans sa ville, à partir d’une clé de photo déjà uploadée sur R2 (optionnelle).',
 	})
-	@ApiConsumes('multipart/form-data')
 	@ApiBody({
 		type: CreateSignalementCitoyenDto
 	})
@@ -65,15 +86,10 @@ export class SignalementCitoyenController {
 	create(
 		@Req() req: Request,
 		@Body() createSignalementCitoyenDto: CreateSignalementCitoyenDto,
-		@UploadedFiles()
-		files: Express.Multer.File[],
 	) {
 		const user = req.user as AuthenticatedActor;
 		createSignalementCitoyenDto.citoyenId = user.id;
-		return this.signalementCitoyenService.create(
-			createSignalementCitoyenDto,
-			files,
-		);
+		return this.signalementCitoyenService.create(createSignalementCitoyenDto);
 	}
 
 	@Get()
@@ -226,17 +242,11 @@ export class SignalementCitoyenController {
 
 	@Patch(':id')
 	@UseGuards(JwtAuthGuard, AdminGuard)
-	@UseInterceptors(
-		FilesInterceptor('photo', 1, {
-			dest: './uploads/tmp/signalements',
-		}),
-	)
 	@ApiOperation({
 		summary: 'Mettre à jour un signalement (Admin uniquement)',
 		description:
-			"Permet de modifier les informations d'un signalement existant. La validation nécessite les droits administrateur.",
+			"Permet de modifier les informations d'un signalement existant, y compris sa photo via une clé R2 déjà uploadée. La validation nécessite les droits administrateur.",
 	})
-	@ApiConsumes('multipart/form-data')
 	@ApiParam({
 		name: 'id',
 		description: 'Identifiant unique du signalement à modifier',
@@ -254,7 +264,12 @@ export class SignalementCitoyenController {
 				longitude: {type: 'number'},
 				statut: {type: 'string', enum: ['NOUVEAU', 'EN_COURS', 'RESOLU', 'REJETE']},
 				validation: {type: 'boolean', description: 'Nécessite les droits admin'},
-				photo: {type: 'string', format: 'binary', description: 'Nouvelle photo du signalement'},
+				photoKey: {
+					type: 'string',
+					description:
+						"Nouvelle clé R2 de la photo, obtenue via POST /signalement-citoyen/upload-url",
+					example: 'signalements/1732000000000.jpg',
+				},
 			},
 		},
 	})
@@ -282,13 +297,10 @@ export class SignalementCitoyenController {
 	update(
 		@Param('id') id: string,
 		@Body() updateSignalementCitoyenDto: UpdateSignalementCitoyenDto,
-		@UploadedFiles()
-		files: Express.Multer.File[],
 	) {
 		return this.signalementCitoyenService.update(
 			id,
 			updateSignalementCitoyenDto,
-			files,
 		);
 	}
 

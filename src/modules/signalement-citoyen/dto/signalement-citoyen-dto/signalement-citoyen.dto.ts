@@ -92,9 +92,11 @@ export class SignalementCitoyenDto {
   @Expose()
   longitude: number;
 
+  // Le champ porte la clé R2 en base ; le service retourne l'URL publique
+  // complète (R2StorageService.getPublicUrl), pas la clé brute.
   @ApiProperty({
     description: 'URL de la photo du signalement',
-    example: 'https://example.com/photos/signalement.jpg',
+    example: 'https://cdn.mec-ci.org/signalements/1732000000000.jpg',
     required: false,
   })
   @IsOptional()

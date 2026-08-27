@@ -14,9 +14,10 @@ export class UserResponseDto {
   @ApiPropertyOptional({ example: '+2250707070707' })
   phone?: string | null;
 
-  // Le champ s'appelle `avatar` en base. L'ancien DTO documentait `image` et
-  // `address`, qui n'ont jamais existé sur le modèle.
-  @ApiPropertyOptional({ example: '/uploads/users-avatar/u1b2c3d4.jpg' })
+  // Le champ s'appelle `avatar` en base et porte la clé R2 ; le service
+  // retourne l'URL publique complète (R2StorageService.getPublicUrl), pas la
+  // clé brute.
+  @ApiPropertyOptional({ example: 'https://cdn.mec-ci.org/users-avatar/u1b2c3d4.jpg' })
   avatar?: string | null;
 
   @ApiProperty({ example: true })

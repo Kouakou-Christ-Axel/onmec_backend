@@ -4,6 +4,7 @@ import { PrismaService } from '../../database/services/prisma.service';
 import { EngagementService } from '../engagement/engagement.service';
 import { GamificationService } from '../gamification/gamification.service';
 import { NotificationService } from '../notification/notification.service';
+import { R2StorageService } from '../../common/services/r2-storage.service';
 
 describe('SignalementCitoyenService', () => {
   let service: SignalementCitoyenService;
@@ -30,6 +31,16 @@ describe('SignalementCitoyenService', () => {
     notifierMembre: jest.fn().mockResolvedValue(undefined),
   };
 
+  // Le service resout l'URL publique de la photo (getPublicUrl) et supprime
+  // l'ancien objet R2 au remplacement ; sans ce provider le module de test ne
+  // compile plus.
+  const r2Mock = {
+    isConfigured: jest.fn().mockReturnValue(true),
+    getUploadUrl: jest.fn().mockResolvedValue('https://r2.example.com/signed'),
+    delete: jest.fn().mockResolvedValue(undefined),
+    getPublicUrl: jest.fn((key: string) => `https://cdn.mec-ci.org/${key}`),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
     const module: TestingModule = await Test.createTestingModule({
@@ -39,6 +50,7 @@ describe('SignalementCitoyenService', () => {
         { provide: EngagementService, useValue: engagementMock },
         { provide: GamificationService, useValue: gamificationMock },
         { provide: NotificationService, useValue: notificationMock },
+        { provide: R2StorageService, useValue: r2Mock },
       ],
     }).compile();
 

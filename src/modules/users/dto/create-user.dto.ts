@@ -41,10 +41,12 @@ export class CreateUserDto {
   phone?: string;
 
   @ApiProperty({
-    description: "Image de l'utilisateur",
+    description:
+      "Clé R2 de l'avatar, obtenue via une demande d'URL présignée préalable (POST /users/avatar/upload-url)",
     required: false,
-    type: 'file' as 'string',
+    example: 'users-avatar/1732000000000.jpg',
   })
   @IsOptional()
-  image?: string;
+  @IsString()
+  avatarKey?: string;
 }

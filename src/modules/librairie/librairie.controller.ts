@@ -8,15 +8,13 @@ import {
   Patch,
   Post,
   Query,
+  Redirect,
   Req,
-  UploadedFiles,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiBody,
-  ApiConsumes,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -26,47 +24,54 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { LibrairieService } from './librairie.service';
-import { CreateDocumentDto, DocumentFilesDto } from './dto/create-document.dto';
+import { CreateDocumentDto } from './dto/create-document.dto';
 import { UpdateDocumentDto } from './dto/update-document.dto';
 import { DocumentResponseDto, PublicDocumentResponseDto } from './dto/document-response.dto';
+import { UploadDocumentRequestDto, UploadDocumentResponseDto } from './dto/upload-document.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
 import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
 import { SearchDocumentDto } from './dto/search-document.dto';
-import { UploadValidationPipe } from '../image-processing/upload-validation/upload-validation.pipe';
 
 @ApiTags('Librairie')
 @Controller('librairie')
 export class LibrairieController {
   constructor(private readonly librairieService: LibrairieService) {}
 
+  @Post('upload-url')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT')
+  @ApiOperation({
+    summary: "Demander une URL présignée pour un document ou sa couverture",
+    description:
+      "Génère une clé d'objet sous `librairie/<documentId>/` et une URL PUT présignée. Le client envoie ensuite le fichier directement à R2, puis fournit la clé (et pour la couverture, le même documentId lors du second appel) via `fichierKey`/`coverKey` au POST /librairie.",
+  })
+  @ApiBody({ type: UploadDocumentRequestDto })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: 'URL présignée générée',
+    type: UploadDocumentResponseDto,
+  })
+  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
+  async uploadUrl(@Body() dto: UploadDocumentRequestDto) {
+    return this.librairieService.buildUploadUrl(dto);
+  }
+
   @Post()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT')
-  @ApiOperation({ summary: 'Uploader un document', description: 'Crée une nouvelle entrée de document avec fichier et couverture optionnelle.' })
-  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Créer un document', description: "Crée une nouvelle entrée de document à partir d'une clé de fichier (et éventuellement de couverture) déjà uploadée sur R2." })
   @ApiBody({ type: CreateDocumentDto })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Document créé avec succès', type: DocumentResponseDto })
   @ApiUnauthorizedResponse({ description: 'Non authentifié' })
-  @UseInterceptors(
-    FileFieldsInterceptor([
-      { name: 'covers', maxCount: 1 },
-      { name: 'fichiers', maxCount: 1 },
-    ], {
-      dest: './uploads/tmp/librairie',
-    }),
-  )
   create(
     @Req() req: Request,
     @Body() createLibrairieDto: CreateDocumentDto,
-    @UploadedFiles(new UploadValidationPipe())
-    files: DocumentFilesDto,
   ) {
     const user = req.user as AuthenticatedActor;
     createLibrairieDto.userId = user.id;
 
-    return this.librairieService.create(createLibrairieDto, files);
+    return this.librairieService.create(createLibrairieDto);
   }
 
   @Get()
@@ -132,9 +137,10 @@ export class LibrairieController {
   }
 
   @Get(':id/file')
-  @ApiOperation({ summary: 'Télécharger le fichier', description: 'Retourne l\'URL de téléchargement du fichier associé au document.' })
+  @Redirect()
+  @ApiOperation({ summary: 'Télécharger le fichier', description: "Redirige (302) vers l'URL publique R2 du fichier associé au document." })
   @ApiParam({ name: 'id', description: 'Identifiant du document', example: '550e8400-e29b-41d4-a716-446655440000' })
-  @ApiOkResponse({ description: 'URL du fichier retournée' })
+  @ApiResponse({ status: HttpStatus.FOUND, description: 'Redirection vers le fichier' })
   @ApiNotFoundResponse({ description: 'Document non trouvé' })
   async getFile(@Param('id') id: string) {
     return await this.librairieService.getFile(id);

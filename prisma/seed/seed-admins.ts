@@ -1,4 +1,4 @@
-import * as bcrypt from 'bcryptjs';
+import * as bcrypt from 'bcrypt';
 import { PrismaClient } from '../../src/generated/prisma/client';
 
 // UUID fixes : le seed doit rester rejouable (la CI le lance a chaque deploiement).

@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class CreateDocumentDto {
   @ApiProperty({
@@ -38,9 +38,23 @@ export class CreateDocumentDto {
   })
   @IsOptional()
   userId?: string;
-}
 
-export interface DocumentFilesDto {
-  covers?: Express.Multer.File[];
-  fichiers?: Express.Multer.File[];
+  @ApiProperty({
+    description:
+      "Clé R2 du fichier PDF, obtenue via POST /librairie/upload-url (kind: 'fichier')",
+    example: 'librairie/550e8400-e29b-41d4-a716-446655440000/fichier.pdf',
+  })
+  @IsString({ message: 'fichierKey doit être une chaîne de caractères' })
+  @IsNotEmpty({ message: 'fichierKey est requis' })
+  fichierKey: string;
+
+  @ApiProperty({
+    description:
+      "Clé R2 de la couverture, obtenue via POST /librairie/upload-url (kind: 'cover')",
+    example: 'librairie/550e8400-e29b-41d4-a716-446655440000/cover.jpg',
+    required: false,
+  })
+  @IsOptional()
+  @IsString({ message: 'coverKey doit être une chaîne de caractères' })
+  coverKey?: string;
 }

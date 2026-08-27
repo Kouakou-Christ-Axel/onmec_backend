@@ -7,12 +7,8 @@ import { UsersModule } from 'src/modules/users/users.module';
 import { AdminsModule } from 'src/modules/admins/admins.module';
 import { AuthModule } from 'src/modules/auth/auth.module';
 import { DatabaseModule } from 'src/database/database.module';
-import { ScheduleModule } from '@nestjs/schedule';
-import { EventEmitterModule } from '@nestjs/event-emitter';
 import { JsonWebTokenModule } from 'src/json-web-token/json-web-token.module';
 import { validateEnv } from 'src/config/env.validation';
-import { SimpleStorageModule } from './modules/simple-storage/simple-storage.module';
-import { ImageProcessingModule } from './modules/image-processing/image-processing.module';
 import { LibrairieModule } from './modules/librairie/librairie.module';
 import { SignalementCitoyenModule } from './modules/signalement-citoyen/signalement-citoyen.module';
 import { QuizzModule } from './modules/quizz/quizz.module';
@@ -29,15 +25,11 @@ import { HealthModule } from './health/health.module';
     // Plafond global de repli. Les routes sensibles (connexion, inscription,
     // envoi d'OTP) posent leur propre `@Throttle`, nettement plus serré.
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
-    ScheduleModule.forRoot(),
-    EventEmitterModule.forRoot({}),
     DatabaseModule,
     CommonModule,
     UsersModule,
     AdminsModule,
     AuthModule,
-    SimpleStorageModule,
-    ImageProcessingModule,
     LibrairieModule,
     SignalementCitoyenModule,
     QuizzModule,
