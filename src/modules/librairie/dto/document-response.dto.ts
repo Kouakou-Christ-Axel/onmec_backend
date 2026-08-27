@@ -28,12 +28,17 @@ export class DocumentResponseDto {
   @ApiProperty({ description: "Date d'upload", example: "2026-01-24T10:30:00Z" })
   uploadedAt: Date;
 
-  @ApiProperty({ description: "Informations de l'utilisateur ayant uploadé", type: Object })
+  @ApiProperty({
+    description:
+      "Informations de l'administrateur ayant uploadé. `null` quand le compte a été supprimé depuis : la relation Document.uploadedById est optionnelle côté schéma.",
+    type: Object,
+    nullable: true,
+  })
   uploadedBy: {
     id: string;
     fullname: string;
     email: string;
-  };
+  } | null;
 }
 
 export class PublicDocumentResponseDto {

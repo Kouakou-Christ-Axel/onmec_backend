@@ -382,16 +382,12 @@ export class LibrairieService {
 			coverImage: document.coverImage ? this.r2Service.getPublicUrl(document.coverImage) : null,
 			pageCount: document.pageCount,
 			uploadedAt: document.uploadedAt,
-			// `uploadedBy` est une relation optionnelle (Document.uploadedById est
-			// nullable) : on accède aux champs un par un plutôt que de repasser
-			// l'objet tel quel, pour ne pas transformer silencieusement l'échec
-			// actuel (accès à une propriété de null) en réponse 200 à uploadedBy
-			// null.
-			uploadedBy: {
-				id: document.uploadedBy.id,
-				fullname: document.uploadedBy.fullname,
-				email: document.uploadedBy.email,
-			},
+			// Relation optionnelle : Document.uploadedById est nullable, donc
+			// `uploadedBy` vaut null des qu'un compte back-office a ete supprime.
+			// Le derefencer sans garde faisait tomber en 500 tout GET /librairie
+			// contenant un tel document. Le flux public le gerait deja
+			// (`uploadedBy?.fullname ?? ''` dans publicDocumentToDto).
+			uploadedBy: document.uploadedBy ?? null,
 		};
 	}
 }
