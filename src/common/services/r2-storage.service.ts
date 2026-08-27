@@ -4,6 +4,7 @@ import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
+  GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
@@ -55,6 +56,21 @@ export class R2StorageService {
       ContentType: contentType,
     });
     return getSignedUrl(this.client, command, { expiresIn });
+  }
+
+  /** Télécharge un objet R2 entièrement en mémoire, pour un traitement ponctuel côté backend. */
+  async getObjectBuffer(key: string): Promise<Buffer> {
+    if (!this.client) {
+      throw new ServiceUnavailableException(NOT_CONFIGURED_MESSAGE);
+    }
+    const response = await this.client.send(
+      new GetObjectCommand({ Bucket: this.bucketName, Key: key }),
+    );
+    const chunks: Buffer[] = [];
+    for await (const chunk of response.Body as AsyncIterable<Buffer>) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
   }
 
   async delete(key: string): Promise<void> {

@@ -123,6 +123,7 @@ model Document {
   coverImage   String? // chemin local ou URL vers l'image de couverture
   fileUrl      String // chemin local ou URL vers le fichier uploadé
   fileType     String // ex: "pdf", "docx", "epub"
+  pageCount    Int? // nombre de pages, détecté automatiquement pour les PDF
   uploadedAt   DateTime @default(now())
   // La librairie est alimentée depuis le back-office.
   uploadedBy   Admin?   @relation(fields: [uploadedById], references: [id])

@@ -22,6 +22,9 @@ export class DocumentResponseDto {
   @ApiProperty({ description: "URL publique de la couverture", example: "https://cdn.mec-ci.org/librairie/550e8400-e29b-41d4-a716-446655440000/cover.jpg", nullable: true })
   coverImage: string | null;
 
+  @ApiProperty({ description: 'Nombre de pages du document (détecté automatiquement pour les PDF)', nullable: true })
+  pageCount: number | null;
+
   @ApiProperty({ description: "Date d'upload", example: "2026-01-24T10:30:00Z" })
   uploadedAt: Date;
 
@@ -54,6 +57,9 @@ export class PublicDocumentResponseDto {
 
   @ApiProperty({ description: "URL de la couverture", nullable: true })
   coverImage: string | null;
+
+  @ApiProperty({ description: 'Nombre de pages du document (détecté automatiquement pour les PDF)', nullable: true })
+  pageCount: number | null;
 
   @ApiProperty({ description: "Date d'upload" })
   uploadedAt: Date;

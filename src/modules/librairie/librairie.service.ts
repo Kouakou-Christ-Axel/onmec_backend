@@ -4,6 +4,7 @@ import { CreateDocumentDto } from './dto/create-document.dto';
 import { UpdateDocumentDto } from './dto/update-document.dto';
 import { randomUUID } from 'crypto';
 import { extname } from 'path';
+import { PDFParse } from 'pdf-parse';
 import { SearchDocumentDto } from './dto/search-document.dto';
 import { ConfigService } from '@nestjs/config';
 import { DocumentResponseDto, PaginatedResponse, PublicDocumentResponseDto } from './dto/document-response.dto';
@@ -106,6 +107,8 @@ export class LibrairieService {
 			}
 		}
 
+		const pageCount = await this.detectPageCount(createLibrairieDto.fichierKey);
+
 		const document = await this.prisma.document.create({
 			data: {
 				id: documentId,
@@ -116,6 +119,7 @@ export class LibrairieService {
 				uploadedById: createLibrairieDto.userId,
 				fileUrl: createLibrairieDto.fichierKey,
 				coverImage: createLibrairieDto.coverKey ?? null,
+				pageCount,
 			},
 			include: {
 				uploadedBy: {
@@ -231,6 +235,7 @@ export class LibrairieService {
 				fileType: doc.fileType,
 				fileUrl: `${backendUrl}/api/v1/librairie/${doc.id}/file`,
 				coverImage: doc.coverImage ? this.r2Service.getPublicUrl(doc.coverImage) : null,
+				pageCount: doc.pageCount,
 				uploadedAt: doc.uploadedAt,
 				auteur: doc.uploadedBy?.fullname ?? '',
 			})),
@@ -268,6 +273,7 @@ export class LibrairieService {
 			fileType: document.fileType,
 			fileUrl: `${backendUrl}/api/v1/librairie/${document.id}/file`,
 			coverImage: document.coverImage ? this.r2Service.getPublicUrl(document.coverImage) : null,
+			pageCount: document.pageCount,
 			uploadedAt: document.uploadedAt,
 			auteur: document.uploadedBy?.fullname ?? '',
 		};
@@ -360,6 +366,29 @@ export class LibrairieService {
 		});
 	}
 
+	/**
+	 * Détecte le nombre de pages d'un PDF fraîchement uploadé sur R2.
+	 * Best-effort : une erreur (réseau, PDF corrompu) ne doit pas faire
+	 * échouer la création du document — on journalise et on retourne `null`.
+	 */
+	private async detectPageCount(fichierKey: string): Promise<number | null> {
+		try {
+			const buffer = await this.r2Service.getObjectBuffer(fichierKey);
+			const parser = new PDFParse({ data: buffer });
+			try {
+				const info = await parser.getInfo();
+				return info.total ?? null;
+			} finally {
+				await parser.destroy();
+			}
+		} catch (error) {
+			this.logger.warn(
+				`Impossible de détecter le nombre de pages pour ${fichierKey}: ${(error as Error).message}`,
+			);
+			return null;
+		}
+	}
+
 	/** Suppression best-effort : l'échec ne doit pas faire échouer la requête. */
 	private async deleteR2Object(key: string) {
 		try {
@@ -380,6 +409,7 @@ export class LibrairieService {
 			fileType: document.fileType,
 			fileUrl: `${backendUrl}/api/v1/librairie/${id}/file`,
 			coverImage: document.coverImage ? this.r2Service.getPublicUrl(document.coverImage) : null,
+			pageCount: document.pageCount,
 			uploadedAt: document.uploadedAt,
 			uploadedBy: {
 				id: document.uploadedBy.id,
