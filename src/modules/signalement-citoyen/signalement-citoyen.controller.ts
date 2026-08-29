@@ -23,6 +23,8 @@ import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
 import {SearchSignalementCitoyenDto} from './dto/signalement-citoyen-dto/search-signalement-citoyen.dto';
 import {ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags,} from '@nestjs/swagger';
 import {SignalementCitoyenDto} from './dto/signalement-citoyen-dto/signalement-citoyen.dto';
+import {SignalementUpdateDto} from './dto/signalement-citoyen-dto/signalement-update.dto';
+import {CreateSignalementUpdateDto} from './dto/signalement-citoyen-dto/create-signalement-update.dto';
 import {JwtAuthGuard} from '../auth/guards/jwt-auth.guard';
 import {OptionalJwtAuthGuard} from '../auth/guards/optional-jwt-auth.guard';
 import {AdminGuard} from '../auth/guards/admin.guard';
@@ -238,6 +240,77 @@ export class SignalementCitoyenController {
 	findOne(@Param('id') id: string, @Req() req: Request) {
 		const user = req.user as AuthenticatedActor | undefined;
 		return this.signalementCitoyenService.findOne(id, user?.id);
+	}
+
+	@Post(':id/updates')
+	@UseGuards(JwtAuthGuard, AdminGuard)
+	@ApiOperation({
+		summary: 'Ajouter une mise à jour au journal de suivi (Admin uniquement)',
+		description:
+			"Poste une mise à jour texte sur un signalement, visible par le citoyen dans l'app mobile. L'auteur est déduit du JWT.",
+	})
+	@ApiParam({
+		name: 'id',
+		description: 'Identifiant unique du signalement',
+		example: 'a1b2c3d4-e5f6-7g8h-9i0j-k1l2m3n4o5p6',
+	})
+	@ApiBody({type: CreateSignalementUpdateDto})
+	@ApiResponse({
+		status: HttpStatus.CREATED,
+		description: 'Mise à jour ajoutée avec succès',
+		type: SignalementUpdateDto,
+	})
+	@ApiResponse({
+		status: HttpStatus.BAD_REQUEST,
+		description: 'Données invalides',
+	})
+	@ApiResponse({
+		status: HttpStatus.NOT_FOUND,
+		description: 'Signalement non trouvé',
+	})
+	@ApiResponse({
+		status: HttpStatus.UNAUTHORIZED,
+		description: 'Non authentifié',
+	})
+	@ApiResponse({
+		status: HttpStatus.FORBIDDEN,
+		description: 'Accès réservé aux administrateurs',
+	})
+	addUpdate(
+		@Param('id') id: string,
+		@Body() createSignalementUpdateDto: CreateSignalementUpdateDto,
+		@Req() req: Request,
+	) {
+		const user = req.user as AuthenticatedActor;
+		return this.signalementCitoyenService.addUpdate(
+			id,
+			user.id,
+			createSignalementUpdateDto.texte,
+		);
+	}
+
+	@Get(':id/updates')
+	@ApiOperation({
+		summary: "Récupérer le journal de suivi d'un signalement",
+		description:
+			"Retourne les mises à jour postées par les admins sur un signalement, triées de la plus ancienne à la plus récente.",
+	})
+	@ApiParam({
+		name: 'id',
+		description: 'Identifiant unique du signalement',
+		example: 'a1b2c3d4-e5f6-7g8h-9i0j-k1l2m3n4o5p6',
+	})
+	@ApiResponse({
+		status: HttpStatus.OK,
+		description: 'Journal de suivi récupéré avec succès',
+		type: [SignalementUpdateDto],
+	})
+	@ApiResponse({
+		status: HttpStatus.NOT_FOUND,
+		description: 'Signalement non trouvé',
+	})
+	getUpdates(@Param('id') id: string) {
+		return this.signalementCitoyenService.getUpdates(id);
 	}
 
 	@Patch(':id')

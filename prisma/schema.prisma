@@ -62,10 +62,11 @@ model Admin {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  actualites       Actualite[] @relation("ActualiteAuthor")
-  documents        Document[]
-  quizzes          Quiz[]      @relation("QuizAuthor")
-  membresSuspendus Member[]    @relation("MemberSuspendedBy")
+  actualites         Actualite[]         @relation("ActualiteAuthor")
+  documents          Document[]
+  quizzes            Quiz[]              @relation("QuizAuthor")
+  membresSuspendus   Member[]            @relation("MemberSuspendedBy")
+  signalementUpdates SignalementUpdate[]
 
   @@index([role])
   @@map("admins")
@@ -177,8 +178,29 @@ model SignalementCitoyen {
 
   reactions    Reaction[]
   commentaires Commentaire[]
+  updates      SignalementUpdate[]
 
   @@map("signalements_citoyens")
+}
+
+// Journal de suivi d'un signalement : mises a jour texte postees par un
+// admin, visibles par le citoyen dans l'app mobile.
+model SignalementUpdate {
+  id            String             @id @default(uuid()) @db.Uuid
+  signalementId String             @db.Uuid
+  signalement   SignalementCitoyen @relation(fields: [signalementId], references: [id], onDelete: Cascade)
+
+  // Nullable, sans onDelete explicite : meme convention que Quiz.authorId,
+  // Actualite.authorId et Document.uploadedById (Admin est soft-delete, jamais
+  // hard-delete, donc en pratique cette colonne ne se retrouve jamais orpheline).
+  auteurId String? @db.Uuid
+  auteur   Admin?  @relation(fields: [auteurId], references: [id])
+
+  texte String @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@map("signalement_updates")
 }
 
 enum QuizDifficulte {

@@ -3,6 +3,7 @@ import {CreateSignalementCitoyenDto} from './dto/signalement-citoyen-dto/create-
 import {UpdateSignalementCitoyenDto} from './dto/signalement-citoyen-dto/update-signalement-citoyen.dto';
 import {SearchSignalementCitoyenDto} from './dto/signalement-citoyen-dto/search-signalement-citoyen.dto';
 import {UploadSignalementPhotoResponseDto} from './dto/signalement-citoyen-dto/upload-signalement-photo.dto';
+import {SignalementUpdateDto} from './dto/signalement-citoyen-dto/signalement-update.dto';
 import {PrismaService} from '../../database/services/prisma.service';
 import {extname} from 'path';
 import {PaginatedResponse} from './dto/signalement-citoyen-dto/paginated-response.dto';
@@ -483,5 +484,79 @@ export class SignalementCitoyenService {
 		}
 
 		return await this.prisma.signalementCitoyen.delete({where: {id}});
+	}
+
+	/** Reshape un SignalementUpdate Prisma (avec auteur inclus) en SignalementUpdateDto. */
+	private mapSignalementUpdate(update: {
+		id: string;
+		signalementId: string;
+		texte: string;
+		createdAt: Date;
+		auteur: {id: string; fullname: string} | null;
+	}): SignalementUpdateDto {
+		return {
+			id: update.id,
+			signalementId: update.signalementId,
+			texte: update.texte,
+			createdAt: update.createdAt,
+			auteur: update.auteur ? {id: update.auteur.id, fullname: update.auteur.fullname} : null,
+		};
+	}
+
+	/**
+	 * Ajoute une mise à jour au journal de suivi d'un signalement.
+	 * @param signalementId - Signalement concerné
+	 * @param auteurId - Identifiant de l'admin auteur, déduit du JWT
+	 * @param texte - Contenu de la mise à jour
+	 */
+	async addUpdate(signalementId: string, auteurId: string, texte: string): Promise<SignalementUpdateDto> {
+		const signalement = await this.prisma.signalementCitoyen.findUnique({
+			where: {id: signalementId},
+		});
+
+		if (!signalement) {
+			throw new NotFoundException(
+				`Signalement citoyen avec l'id ${signalementId} introuvable`,
+			);
+		}
+
+		const created = await this.prisma.signalementUpdate.create({
+			data: {signalementId, auteurId, texte},
+			include: {
+				auteur: {
+					select: {id: true, fullname: true},
+				},
+			},
+		});
+
+		return this.mapSignalementUpdate(created);
+	}
+
+	/**
+	 * Récupère le journal de suivi d'un signalement, du plus ancien au plus
+	 * récent.
+	 */
+	async getUpdates(signalementId: string): Promise<SignalementUpdateDto[]> {
+		const signalement = await this.prisma.signalementCitoyen.findUnique({
+			where: {id: signalementId},
+		});
+
+		if (!signalement) {
+			throw new NotFoundException(
+				`Signalement citoyen avec l'id ${signalementId} introuvable`,
+			);
+		}
+
+		const updates = await this.prisma.signalementUpdate.findMany({
+			where: {signalementId},
+			include: {
+				auteur: {
+					select: {id: true, fullname: true},
+				},
+			},
+			orderBy: {createdAt: 'asc'},
+		});
+
+		return updates.map((u) => this.mapSignalementUpdate(u));
 	}
 }
