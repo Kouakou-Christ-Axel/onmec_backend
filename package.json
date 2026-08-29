@@ -24,6 +24,7 @@
     "db:migrate": "npx prisma migrate dev",
     "db:deploy": "npx prisma migrate deploy",
     "migrate:uploads-to-r2": "ts-node scripts/migrate-uploads-to-r2.ts",
+    "create-admin": "ts-node -r tsconfig-paths/register scripts/create-admin.ts",
     "docs:openapi": "ts-node -r tsconfig-paths/register scripts/export-openapi.ts"
   },
   "dependencies": {
