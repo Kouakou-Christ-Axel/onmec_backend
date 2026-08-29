@@ -16,10 +16,12 @@ import {
   ApiBearerAuth,
   ApiBody,
   ApiCreatedResponse,
+  ApiExtraModels,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiResponse,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -27,6 +29,7 @@ import {
 import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { QuizzService } from './quizz.service';
 import { CreateCategorieQuizDto, UpdateCategorieQuizDto } from './dto/create-categorie-quiz.dto';
@@ -34,16 +37,19 @@ import { CreateQuizzDto } from './dto/create-quizz.dto';
 import { UpdateQuizzDto } from './dto/update-quizz.dto';
 import { SubmitAnswerDto } from './dto/submit-answer.dto';
 import { SearchQuizzDto } from './dto/search-quizz.dto';
+import { SearchQuizResultsDto } from './dto/search-quiz-results.dto';
 import {
   CategorieQuizResponseDto,
   QuizzResponseDto,
   QuizResultResponseDto,
   QuizStatisticsResponseDto,
+  QuizAttemptAdminResponseDto,
   SubmitAnswerResponseDto,
 } from './dto/quizz-response.dto';
 
 @ApiTags('Quizz')
 @ApiBearerAuth('JWT')
+@ApiExtraModels(QuizAttemptAdminResponseDto)
 @Controller('quizz')
 export class QuizzController {
   constructor(private readonly quizService: QuizzService) {}
@@ -81,7 +87,8 @@ export class QuizzController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Liste des quiz', description: 'Retourne les quiz avec pagination et filtres optionnels par catégorie, difficulté ou recherche.' })
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({ summary: 'Liste des quiz', description: 'Retourne les quiz avec pagination et filtres optionnels par catégorie, difficulté ou recherche. Le champ `isCorrect` des choix n\'est visible qu\'aux administrateurs authentifiés.' })
   @ApiOkResponse({
     description: 'Liste paginée des quiz',
     schema: {
@@ -91,8 +98,8 @@ export class QuizzController {
       ],
     },
   })
-  findAll(@Query() query: SearchQuizzDto) {
-    return this.quizService.findAll(query);
+  findAll(@Query() query: SearchQuizzDto, @CurrentUser() actor?: AuthenticatedActor) {
+    return this.quizService.findAll(query, actor);
   }
 
   // ─── Catégories ────────────────────────────────────────────────────────────
@@ -143,15 +150,34 @@ export class QuizzController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Supprimer une catégorie (Admin)' })
   @ApiParam({ name: 'id', description: 'Identifiant de la catégorie', example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' })
+  @ApiQuery({ name: 'reassignTo', required: false, description: 'Identifiant de la catégorie vers laquelle réaffecter les quiz existants avant suppression' })
   @ApiOkResponse({ description: 'Catégorie supprimée' })
   @ApiNotFoundResponse({ description: 'Catégorie non trouvée' })
   @ApiUnauthorizedResponse({ description: 'Non authentifié' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Accès réservé aux administrateurs' })
-  removeCategorie(@Param('id') id: string) {
-    return this.quizService.removeCategorie(id);
+  removeCategorie(@Param('id') id: string, @Query('reassignTo') reassignTo?: string) {
+    return this.quizService.removeCategorie(id, reassignTo);
   }
 
   // ─── Quiz par ID ───────────────────────────────────────────────────────────
+
+  @Get('results')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOperation({ summary: 'Toutes les tentatives de quiz (Admin)', description: 'Retourne, paginée, l\'historique de toutes les tentatives de tous les utilisateurs. Filtrable par quiz.' })
+  @ApiOkResponse({
+    description: 'Liste paginée des tentatives',
+    schema: {
+      allOf: [
+        { $ref: '#/components/schemas/PaginatedResponseDto' },
+        { properties: { data: { type: 'array', items: { $ref: '#/components/schemas/QuizAttemptAdminResponseDto' } } } },
+      ],
+    },
+  })
+  @ApiUnauthorizedResponse({ description: 'Non authentifié' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Accès réservé aux administrateurs' })
+  getAllResults(@Query() query: SearchQuizResultsDto) {
+    return this.quizService.getAllResults(query);
+  }
 
   @Get('results/:userId')
   @UseGuards(JwtAuthGuard)
@@ -170,12 +196,13 @@ export class QuizzController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Détail d\'un quiz' })
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({ summary: 'Détail d\'un quiz', description: 'Le champ `isCorrect` des choix n\'est visible qu\'aux administrateurs authentifiés.' })
   @ApiParam({ name: 'id', description: 'Identifiant du quiz', example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' })
   @ApiOkResponse({ description: 'Quiz trouvé', type: QuizzResponseDto })
   @ApiNotFoundResponse({ description: 'Quiz non trouvé' })
-  findOne(@Param('id') id: string) {
-    return this.quizService.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() actor?: AuthenticatedActor) {
+    return this.quizService.findOne(id, actor);
   }
 
   @Get(':id/statistics')
