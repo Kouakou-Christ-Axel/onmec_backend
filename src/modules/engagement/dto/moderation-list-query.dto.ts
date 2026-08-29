@@ -1,23 +1,8 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsIn, IsOptional } from 'class-validator';
+import { PaginationQueryDto } from './pagination-query.dto';
 
-export class ModerationListQueryDto {
-  @ApiPropertyOptional({ description: 'Numéro de la page (commence à 1)', example: 1, default: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page: number = 1;
-
-  @ApiPropertyOptional({ description: "Nombre d'éléments par page", example: 20, default: 20 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit: number = 20;
-
+export class ModerationListQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({
     description: 'Filtre optionnel sur le type de cible des commentaires',
     enum: ['signalement', 'actualite'],

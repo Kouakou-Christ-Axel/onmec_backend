@@ -25,28 +25,11 @@ export class CategorieSignalementService {
   }
 
   async findOne(id: string) {
-    const categorie = await this.prisma.categorieSignalement.findUnique({
-      where: { id },
-      include: {
-        _count: {
-          select: { signalements: true },
-        },
-      },
-    });
-
-    if (!categorie || categorie.deletedAt) {
-      throw new NotFoundException(`Catégorie de signalement avec l'id ${id} introuvable`);
-    }
-
-    return categorie;
+    return this.getOrThrow(id, true);
   }
 
   async update(id: string, updateCategorieSignalementDto: UpdateCategorieSignalementDto) {
-    const categorie = await this.prisma.categorieSignalement.findUnique({ where: { id } });
-
-    if (!categorie || categorie.deletedAt) {
-      throw new NotFoundException(`Catégorie de signalement avec l'id ${id} introuvable`);
-    }
+    await this.getOrThrow(id);
 
     return await this.prisma.categorieSignalement.update({
       where: { id },
@@ -55,16 +38,32 @@ export class CategorieSignalementService {
   }
 
   async remove(id: string) {
-    const categorie = await this.prisma.categorieSignalement.findUnique({ where: { id } });
-
-    if (!categorie || categorie.deletedAt) {
-      throw new NotFoundException(`Catégorie de signalement avec l'id ${id} introuvable`);
-    }
+    await this.getOrThrow(id);
 
     // Soft delete
     return await this.prisma.categorieSignalement.update({
       where: { id },
       data: { deletedAt: new Date() },
     });
+  }
+
+  /**
+   * Récupère une catégorie non supprimée ou lève 404 — factorise la relecture
+   * répétée par `findOne`, `update` et `remove`.
+   *
+   * @param avecCompteur - Inclut `_count.signalements`, nécessaire uniquement
+   *   à la réponse détaillée de `findOne`.
+   */
+  private async getOrThrow(id: string, avecCompteur = false) {
+    const categorie = await this.prisma.categorieSignalement.findUnique({
+      where: { id },
+      include: avecCompteur ? { _count: { select: { signalements: true } } } : undefined,
+    });
+
+    if (!categorie || categorie.deletedAt) {
+      throw new NotFoundException(`Catégorie de signalement avec l'id ${id} introuvable`);
+    }
+
+    return categorie;
   }
 }

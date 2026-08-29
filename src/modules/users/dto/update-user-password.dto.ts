@@ -1,12 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsNotEmpty } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { IsStrongPassword } from 'src/common/decorators/validation.decorators';
+import {
+  IsPasswordField,
+  IsStrongPassword,
+} from 'src/common/decorators/validation.decorators';
 
 export class UpdateUserPasswordDto {
-  @ApiProperty({ description: 'Mot de passe actuel', required: true })
-  @IsNotEmpty()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsPasswordField('Mot de passe actuel')
   oldPassword: string;
 
   @IsStrongPassword('Nouveau mot de passe')

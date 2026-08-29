@@ -5,8 +5,7 @@ import {SearchSignalementCitoyenDto} from './dto/signalement-citoyen-dto/search-
 import {UploadSignalementPhotoResponseDto} from './dto/signalement-citoyen-dto/upload-signalement-photo.dto';
 import {SignalementUpdateDto} from './dto/signalement-citoyen-dto/signalement-update.dto';
 import {PrismaService} from '../../database/services/prisma.service';
-import {extname} from 'path';
-import {PaginatedResponse} from './dto/signalement-citoyen-dto/paginated-response.dto';
+import {PaginatedResponseDto} from '../../common/dto/paginated-response.dto';
 import {PointSource, StatutSignalement} from "../../generated/prisma/client";
 import {EngagementService} from '../engagement/engagement.service';
 import {GamificationService} from '../gamification/gamification.service';
@@ -15,12 +14,19 @@ import {
 	NOTIFICATION_TYPE,
 	NotificationService,
 } from '../notification/notification.service';
-import {GenerateDataService} from '../../common/services/generate-data.service';
-import {GenerateConfigService} from '../../common/services/generate-config.service';
 import {R2StorageService} from '../../common/services/r2-storage.service';
 
-/** Durée de validité des URL présignées d'upload de photo, en secondes. */
-const PHOTO_UPLOAD_EXPIRES_IN = 300;
+/** Relations chargées avec chaque signalement renvoyé au client. */
+const SIGNALEMENT_INCLUDE = {
+	categorie: true,
+	citoyen: {
+		select: {
+			id: true,
+			fullname: true,
+			email: true,
+		},
+	},
+} as const;
 
 @Injectable()
 export class SignalementCitoyenService {
@@ -33,16 +39,6 @@ export class SignalementCitoyenService {
 		private readonly notifications: NotificationService,
 		private readonly r2Service: R2StorageService,
 	) {
-	}
-
-	/**
-	 * Enrichit un signalement avec ses statistiques d'engagement
-	 * (likesCount, commentsCount, likedByMe).
-	 */
-	private async withEngagement<T extends {id: string}>(signalement: T, userId?: string): Promise<T & {likesCount: number; commentsCount: number; likedByMe: boolean}> {
-		const stats = await this.engagementService.getEngagementStats('signalement', [signalement.id], userId);
-		const entry = stats.get(signalement.id) ?? {likesCount: 0, commentsCount: 0, likedByMe: false};
-		return {...signalement, ...entry};
 	}
 
 	/**
@@ -98,26 +94,11 @@ export class SignalementCitoyenService {
 	}
 
 	/** Génère une URL présignée pour la photo d'un signalement. */
-	async buildPhotoUploadUrl(
+	buildPhotoUploadUrl(
 		filename: string,
 		contentType: string,
 	): Promise<UploadSignalementPhotoResponseDto> {
-		if (!filename.match(GenerateConfigService.ALLOWED_IMAGE_EXT)) {
-			throw new BadRequestException(
-				'Seuls les fichiers image sont acceptés (jpg, jpeg, png, gif, webp, heic, heif)',
-			);
-		}
-
-		const ext = extname(filename);
-		const name = await GenerateDataService.generateSecureImageName(filename);
-		const key = `signalements/${name}${ext}`;
-		const uploadUrl = await this.r2Service.getUploadUrl(
-			key,
-			contentType,
-			PHOTO_UPLOAD_EXPIRES_IN,
-		);
-
-		return {key, uploadUrl, expiresIn: PHOTO_UPLOAD_EXPIRES_IN};
+		return this.r2Service.presignImage('signalements', filename, contentType);
 	}
 
 	/**
@@ -138,22 +119,13 @@ export class SignalementCitoyenService {
 					statut: StatutSignalement.NOUVEAU,
 					photo: photoKey ?? null,
 				},
-				include: {
-					categorie: true,
-					citoyen: {
-						select: {
-							id: true,
-							fullname: true,
-							email: true,
-						},
-					},
-				},
+				include: SIGNALEMENT_INCLUDE,
 			});
 
 			// Un signalement peut être anonyme : pas de citoyen, donc personne à
 			// créditer.
 			if (signalement.citoyenId) {
-				await this.gamification.attribuerSansEchouer({
+				await this.gamification.attribuer({
 					userId: signalement.citoyenId,
 					source: PointSource.SIGNALEMENT_DEPOSE,
 					sourceId: signalement.id,
@@ -179,7 +151,7 @@ export class SignalementCitoyenService {
 	 *   (validation = true). Utilisé par le flux mobile, qui ne doit afficher que
 	 *   les signalements validés par le back-office.
 	 */
-	async findAll(searchDto: SearchSignalementCitoyenDto, userId?: string, onlyValidated = false): Promise<PaginatedResponse<any>> {
+	async findAll(searchDto: SearchSignalementCitoyenDto, userId?: string, onlyValidated = false): Promise<PaginatedResponseDto<any>> {
 		const {titre, search, categorieId, statut, latitude, longitude, radiusKm, citoyenId, page = 1, limit = 10} = searchDto;
 		const where: any = {};
 
@@ -222,16 +194,7 @@ export class SignalementCitoyenService {
 			this.prisma.signalementCitoyen.count({where}),
 			await this.prisma.signalementCitoyen.findMany({
 				where,
-				include: {
-					categorie: true,
-					citoyen: {
-						select: {
-							id: true,
-							fullname: true,
-							email: true,
-						},
-					},
-				},
+				include: SIGNALEMENT_INCLUDE,
 				orderBy: {
 					createdAt: 'desc',
 				},
@@ -285,96 +248,25 @@ export class SignalementCitoyenService {
 	}
 
 	/**
-	 * Récupère les signalements d'un citoyen donné (paginés).
-	 *
-	 * Contrairement à findAll qui sert de flux/carte publique de l'ensemble des
-	 * signalements, cette méthode ne renvoie que les signalements dont l'auteur
-	 * est `citoyenId`. Elle alimente la route `GET /signalement-citoyen/me`
-	 * (citoyenId déduit du JWT) utilisée par l'écran profil pour afficher
-	 * « Mes signalements » et le compteur associé.
-	 *
-	 * @param citoyenId - Identifiant du citoyen auteur des signalements
-	 * @param page - Numéro de page (défaut 1)
-	 * @param limit - Taille de page (défaut 10)
-	 * @param userId - Identifiant du visiteur connecté (pour likedByMe)
-	 */
-	async findByCitoyen(
-		citoyenId: string,
-		page = 1,
-		limit = 10,
-		userId?: string,
-	): Promise<PaginatedResponse<any>> {
-		const where = {citoyenId};
-
-		const [total, signalements] = await Promise.all([
-			this.prisma.signalementCitoyen.count({where}),
-			this.prisma.signalementCitoyen.findMany({
-				where,
-				include: {
-					categorie: true,
-					citoyen: {
-						select: {
-							id: true,
-							fullname: true,
-							email: true,
-						},
-					},
-				},
-				orderBy: {
-					createdAt: 'desc',
-				},
-				skip: (page - 1) * limit,
-				take: limit,
-			}),
-		]);
-
-		const totalPages = Math.ceil(total / limit);
-
-		const stats = await this.engagementService.getEngagementStats(
-			'signalement',
-			signalements.map((s) => s.id),
-			userId,
-		);
-
-		const data = signalements.map((s) => this.mapSignalement({
-			...s,
-			...(stats.get(s.id) ?? {likesCount: 0, commentsCount: 0, likedByMe: false}),
-		}));
-
-		return {
-			data,
-			meta: {
-				total,
-				page,
-				limit,
-				totalPages,
-			},
-		};
-	}
-
-	/**
 	 * Récupère un signalement par son ID
 	 */
 	async findOne(id: string, userId?: string) {
 		const signalement = await this.prisma.signalementCitoyen.findUnique({
 			where: {id},
-			include: {
-				categorie: true,
-				citoyen: {
-					select: {
-						id: true,
-						fullname: true,
-						email: true,
-					},
-				},
-			},
+			include: SIGNALEMENT_INCLUDE,
 		});
 		if (!signalement) {
 			throw new NotFoundException(
 				`Signalement citoyen avec l'id ${id} introuvable`,
 			);
 		}
-		return this.mapSignalement(await this.withEngagement(signalement, userId));
+
+		// Enrichit le signalement avec ses statistiques d'engagement
+		// (likesCount, commentsCount, likedByMe).
+		const stats = await this.engagementService.getEngagementStats('signalement', [signalement.id], userId);
+		const entry = stats.get(signalement.id) ?? {likesCount: 0, commentsCount: 0, likedByMe: false};
+
+		return this.mapSignalement({...signalement, ...entry});
 	}
 
 	/**
@@ -408,16 +300,7 @@ export class SignalementCitoyenService {
 					...data,
 					...(photoKey !== undefined && {photo: photoKey}),
 				},
-				include: {
-					categorie: true,
-					citoyen: {
-						select: {
-							id: true,
-							fullname: true,
-							email: true,
-						},
-					},
-				},
+				include: SIGNALEMENT_INCLUDE,
 			});
 
 			// L'ancien objet R2 n'etait jamais supprime : chaque remplacement de
@@ -431,7 +314,7 @@ export class SignalementCitoyenService {
 			// revalider ne recredite pas.
 			const vientDEtreValide = !signalement.validation && misAJour.validation;
 			if (vientDEtreValide && misAJour.citoyenId) {
-				await this.gamification.attribuerSansEchouer({
+				await this.gamification.attribuer({
 					userId: misAJour.citoyenId,
 					source: PointSource.SIGNALEMENT_VALIDE,
 					sourceId: misAJour.id,

@@ -7,6 +7,9 @@ export class ChoiceResponseDto {
 
   @ApiProperty({ example: 'Abidjan' })
   text: string;
+
+  @ApiPropertyOptional({ description: 'Visible uniquement pour un admin authentifié', example: true })
+  isCorrect?: boolean;
 }
 
 export class QuestionResponseDto {
@@ -35,6 +38,9 @@ export class CategorieQuizResponseDto {
 
   @ApiProperty({ example: '2026-01-01T00:00:00.000Z' })
   updatedAt: Date;
+
+  @ApiProperty({ description: 'Nombre de quiz dans cette catégorie', example: 5 })
+  quizCount: number;
 }
 
 export class QuizAuthorDto {
@@ -78,6 +84,12 @@ export class QuizzResponseDto {
 
   @ApiProperty({ example: '2026-01-01T00:00:00.000Z' })
   updatedAt: Date;
+
+  @ApiProperty({ example: 42 })
+  totalAttempts: number;
+
+  @ApiProperty({ description: 'Score moyen en pourcentage', example: 67 })
+  averageScore: number;
 }
 
 export class QuizResultResponseDto {
@@ -115,6 +127,29 @@ export class QuizStatisticsResponseDto {
 
   @ApiProperty({ description: 'Les 10 dernières tentatives', isArray: true })
   recentAttempts: object[];
+}
+
+export class QuizAttemptAdminResponseDto {
+  @ApiProperty({ example: 'r1b2c3d4-e5f6-7890-abcd-ef1234567890' })
+  id: string;
+
+  @ApiProperty({ example: 'u1b2c3d4-e5f6-7890-abcd-ef1234567890' })
+  userId: string;
+
+  @ApiProperty({ example: 'Jean Dupont' })
+  userNom: string;
+
+  @ApiProperty({ example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' })
+  quizId: string;
+
+  @ApiProperty({ example: 'Géographie de Côte d\'Ivoire' })
+  quizTitre: string;
+
+  @ApiProperty({ description: 'Score en pourcentage', example: 80 })
+  score: number;
+
+  @ApiPropertyOptional({ example: '2026-01-01T00:00:00.000Z' })
+  completedAt?: Date | null;
 }
 
 export class SubmitAnswerResponseDto {

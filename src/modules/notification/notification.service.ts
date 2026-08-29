@@ -38,6 +38,18 @@ interface Contenu {
   lien?: string;
 }
 
+/** Champs exposés au client : select Prisma partagé, la ligne est déjà le DTO. */
+const NOTIFICATION_SELECT = {
+  id: true,
+  title: true,
+  body: true,
+  type: true,
+  lien: true,
+  isRead: true,
+  readAt: true,
+  createdAt: true,
+} as const;
+
 @Injectable()
 export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
@@ -188,6 +200,7 @@ export class NotificationService {
       this.prisma.notification.count({ where }),
       this.prisma.notification.findMany({
         where,
+        select: NOTIFICATION_SELECT,
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
@@ -196,7 +209,7 @@ export class NotificationService {
     ]);
 
     return {
-      data: notifications.map((n) => this.mapNotification(n)),
+      data: notifications,
       total,
       page,
       limit,
@@ -232,13 +245,14 @@ export class NotificationService {
 
     const notification = await this.prisma.notification.findFirst({
       where: { id, userId },
+      select: NOTIFICATION_SELECT,
     });
 
     if (!notification) {
       throw new NotFoundException(`Notification avec l'id ${id} introuvable`);
     }
 
-    return this.mapNotification(notification);
+    return notification;
   }
 
   async marquerToutesLues(userId: string): Promise<{ marquees: number }> {
@@ -247,27 +261,5 @@ export class NotificationService {
       data: { isRead: true, readAt: new Date() },
     });
     return { marquees: count };
-  }
-
-  private mapNotification(n: {
-    id: string;
-    title: string;
-    body: string;
-    type: string | null;
-    lien: string | null;
-    isRead: boolean;
-    readAt: Date | null;
-    createdAt: Date;
-  }): NotificationResponseDto {
-    return {
-      id: n.id,
-      title: n.title,
-      body: n.body,
-      type: n.type,
-      lien: n.lien,
-      isRead: n.isRead,
-      readAt: n.readAt,
-      createdAt: n.createdAt,
-    };
   }
 }

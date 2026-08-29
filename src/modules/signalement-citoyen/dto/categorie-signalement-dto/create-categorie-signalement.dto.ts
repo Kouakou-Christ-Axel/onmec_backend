@@ -1,7 +1,6 @@
-import { PickType } from '@nestjs/swagger';
 import { CategorieSignalementDto } from './categorie-signalement.dto';
 
-export class CreateCategorieSignalementDto extends PickType(
-  CategorieSignalementDto,
-  ['nom', 'description', 'validationObligatoire'],
-) {}
+// Classe vide plutôt qu'un alias `= CategorieSignalementDto` : le schéma
+// OpenAPI publié (docs/openapi.json) référence `CreateCategorieSignalementDto`
+// par son propre nom, qu'un simple alias de type ferait disparaître.
+export class CreateCategorieSignalementDto extends CategorieSignalementDto {}

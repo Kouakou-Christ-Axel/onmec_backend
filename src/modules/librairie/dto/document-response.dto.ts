@@ -22,15 +22,23 @@ export class DocumentResponseDto {
   @ApiProperty({ description: "URL publique de la couverture", example: "https://cdn.mec-ci.org/librairie/550e8400-e29b-41d4-a716-446655440000/cover.jpg", nullable: true })
   coverImage: string | null;
 
+  @ApiProperty({ description: 'Nombre de pages du document (détecté automatiquement pour les PDF)', type: Number, nullable: true, example: 42 })
+  pageCount: number | null;
+
   @ApiProperty({ description: "Date d'upload", example: "2026-01-24T10:30:00Z" })
   uploadedAt: Date;
 
-  @ApiProperty({ description: "Informations de l'utilisateur ayant uploadé", type: Object })
+  @ApiProperty({
+    description:
+      "Informations de l'administrateur ayant uploadé. `null` quand le compte a été supprimé depuis : la relation Document.uploadedById est optionnelle côté schéma.",
+    type: Object,
+    nullable: true,
+  })
   uploadedBy: {
     id: string;
     fullname: string;
     email: string;
-  };
+  } | null;
 }
 
 export class PublicDocumentResponseDto {
@@ -55,19 +63,12 @@ export class PublicDocumentResponseDto {
   @ApiProperty({ description: "URL de la couverture", nullable: true })
   coverImage: string | null;
 
+  @ApiProperty({ description: 'Nombre de pages du document (détecté automatiquement pour les PDF)', type: Number, nullable: true, example: 42 })
+  pageCount: number | null;
+
   @ApiProperty({ description: "Date d'upload" })
   uploadedAt: Date;
 
   @ApiProperty({ description: "Nom de l'auteur du document", example: "Jean Dupont" })
   auteur: string;
-}
-
-export interface PaginatedResponse<T> {
-  data: T[];
-  meta: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
 }

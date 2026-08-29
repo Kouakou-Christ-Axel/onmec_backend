@@ -4,17 +4,28 @@ import { CreateDocumentDto } from './dto/create-document.dto';
 import { UpdateDocumentDto } from './dto/update-document.dto';
 import { randomUUID } from 'crypto';
 import { extname } from 'path';
+import { PDFParse } from 'pdf-parse';
 import { SearchDocumentDto } from './dto/search-document.dto';
 import { ConfigService } from '@nestjs/config';
-import { DocumentResponseDto, PaginatedResponse, PublicDocumentResponseDto } from './dto/document-response.dto';
+import { DocumentResponseDto, PublicDocumentResponseDto } from './dto/document-response.dto';
 import { DocumentUploadKind, UploadDocumentRequestDto, UploadDocumentResponseDto } from './dto/upload-document.dto';
 import { R2StorageService } from '../../common/services/r2-storage.service';
+import { PaginatedResponseDto } from '../../common/dto/paginated-response.dto';
 
 /** Durée de validité des URL présignées d'upload, en secondes. */
 const UPLOAD_EXPIRES_IN = 300;
 
 /** Extensions de couverture acceptées — plus restreint que les images générales. */
 const ALLOWED_COVER_EXT = /\.(jpg|jpeg|png|webp)$/i;
+
+/** Relation chargée avec chaque document pour exposer l'auteur de l'upload. */
+const UPLOADED_BY_SELECT = {
+	select: {
+		id: true,
+		fullname: true,
+		email: true,
+	},
+} as const;
 
 @Injectable()
 export class LibrairieService {
@@ -106,6 +117,8 @@ export class LibrairieService {
 			}
 		}
 
+		const pageCount = await this.detectPageCount(createLibrairieDto.fichierKey);
+
 		const document = await this.prisma.document.create({
 			data: {
 				id: documentId,
@@ -116,22 +129,15 @@ export class LibrairieService {
 				uploadedById: createLibrairieDto.userId,
 				fileUrl: createLibrairieDto.fichierKey,
 				coverImage: createLibrairieDto.coverKey ?? null,
+				pageCount,
 			},
-			include: {
-				uploadedBy: {
-					select: {
-						id: true,
-						fullname: true,
-						email: true,
-					},
-				},
-			},
+			include: {uploadedBy: UPLOADED_BY_SELECT},
 		});
 
 		return this.documentToDto(document);
 	}
 
-	async findAll(search: SearchDocumentDto): Promise<PaginatedResponse<DocumentResponseDto>> {
+	async findAll(search: SearchDocumentDto): Promise<PaginatedResponseDto<DocumentResponseDto>> {
 		const {limit = 10, page = 1} = search;
 
 		const where = {
@@ -147,15 +153,7 @@ export class LibrairieService {
 		// Récupérer les documents paginés
 		const documents = await this.prisma.document.findMany({
 			where,
-			include: {
-				uploadedBy: {
-					select: {
-						id: true,
-						fullname: true,
-						email: true,
-					},
-				},
-			},
+			include: {uploadedBy: UPLOADED_BY_SELECT},
 			orderBy: {
 				uploadedAt: 'desc',
 			},
@@ -179,15 +177,7 @@ export class LibrairieService {
 	async findOne(id: string): Promise<DocumentResponseDto> {
 		const document = await this.prisma.document.findUnique({
 			where: {id},
-			include: {
-				uploadedBy: {
-					select: {
-						id: true,
-						fullname: true,
-						email: true,
-					},
-				},
-			},
+			include: {uploadedBy: UPLOADED_BY_SELECT},
 		});
 
 		if (!document) {
@@ -197,7 +187,7 @@ export class LibrairieService {
 		return this.documentToDto(document);
 	}
 
-	async findAllPublic(search: SearchDocumentDto): Promise<PaginatedResponse<PublicDocumentResponseDto>> {
+	async findAllPublic(search: SearchDocumentDto): Promise<PaginatedResponseDto<PublicDocumentResponseDto>> {
 		const {limit = 10, page = 1} = search;
 
 		const where = {
@@ -221,19 +211,8 @@ export class LibrairieService {
 			take: limit,
 		});
 
-		const backendUrl = this.getBackendUrl();
 		return {
-			data: documents.map(doc => ({
-				id: doc.id,
-				title: doc.title,
-				description: doc.description,
-				categorie: doc.categorie,
-				fileType: doc.fileType,
-				fileUrl: `${backendUrl}/api/v1/librairie/${doc.id}/file`,
-				coverImage: doc.coverImage ? this.r2Service.getPublicUrl(doc.coverImage) : null,
-				uploadedAt: doc.uploadedAt,
-				auteur: doc.uploadedBy?.fullname ?? '',
-			})),
+			data: documents.map(doc => this.publicDocumentToDto(doc)),
 			meta: {
 				total,
 				page,
@@ -259,6 +238,11 @@ export class LibrairieService {
 			throw new NotFoundException(`Document avec l'ID ${id} non trouvé`);
 		}
 
+		return this.publicDocumentToDto(document);
+	}
+
+	/** Met en forme la vue publique (sans données sensibles) d'un document. */
+	private publicDocumentToDto(document: any): PublicDocumentResponseDto {
 		const backendUrl = this.getBackendUrl();
 		return {
 			id: document.id,
@@ -268,6 +252,7 @@ export class LibrairieService {
 			fileType: document.fileType,
 			fileUrl: `${backendUrl}/api/v1/librairie/${document.id}/file`,
 			coverImage: document.coverImage ? this.r2Service.getPublicUrl(document.coverImage) : null,
+			pageCount: document.pageCount,
 			uploadedAt: document.uploadedAt,
 			auteur: document.uploadedBy?.fullname ?? '',
 		};
@@ -324,15 +309,7 @@ export class LibrairieService {
 				description: updateLibrairieDto.description ?? document.description,
 				categorie: updateLibrairieDto.categorie ?? document.categorie,
 			},
-			include: {
-				uploadedBy: {
-					select: {
-						id: true,
-						fullname: true,
-						email: true,
-					},
-				},
-			},
+			include: {uploadedBy: UPLOADED_BY_SELECT},
 		});
 
 		return this.documentToDto(updatedDocument);
@@ -360,6 +337,29 @@ export class LibrairieService {
 		});
 	}
 
+	/**
+	 * Détecte le nombre de pages d'un PDF fraîchement uploadé sur R2.
+	 * Best-effort : une erreur (réseau, PDF corrompu) ne doit pas faire
+	 * échouer la création du document — on journalise et on retourne `null`.
+	 */
+	private async detectPageCount(fichierKey: string): Promise<number | null> {
+		try {
+			const buffer = await this.r2Service.getObjectBuffer(fichierKey);
+			const parser = new PDFParse({ data: buffer });
+			try {
+				const info = await parser.getInfo();
+				return info.total ?? null;
+			} finally {
+				await parser.destroy();
+			}
+		} catch (error) {
+			this.logger.warn(
+				`Impossible de détecter le nombre de pages pour ${fichierKey}: ${(error as Error).message}`,
+			);
+			return null;
+		}
+	}
+
 	/** Suppression best-effort : l'échec ne doit pas faire échouer la requête. */
 	private async deleteR2Object(key: string) {
 		try {
@@ -380,12 +380,14 @@ export class LibrairieService {
 			fileType: document.fileType,
 			fileUrl: `${backendUrl}/api/v1/librairie/${id}/file`,
 			coverImage: document.coverImage ? this.r2Service.getPublicUrl(document.coverImage) : null,
+			pageCount: document.pageCount,
 			uploadedAt: document.uploadedAt,
-			uploadedBy: {
-				id: document.uploadedBy.id,
-				fullname: document.uploadedBy.fullname,
-				email: document.uploadedBy.email,
-			},
+			// Relation optionnelle : Document.uploadedById est nullable, donc
+			// `uploadedBy` vaut null des qu'un compte back-office a ete supprime.
+			// Le derefencer sans garde faisait tomber en 500 tout GET /librairie
+			// contenant un tel document. Le flux public le gerait deja
+			// (`uploadedBy?.fullname ?? ''` dans publicDocumentToDto).
+			uploadedBy: document.uploadedBy ?? null,
 		};
 	}
 }

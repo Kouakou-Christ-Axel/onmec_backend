@@ -21,16 +21,18 @@ import {
 import {Request} from 'express';
 import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
 import {SearchSignalementCitoyenDto} from './dto/signalement-citoyen-dto/search-signalement-citoyen.dto';
-import {ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags,} from '@nestjs/swagger';
+import {ApiBearerAuth, ApiBody, ApiExtraModels, ApiOkResponse, ApiOperation, ApiParam, ApiResponse, ApiTags,} from '@nestjs/swagger';
 import {SignalementCitoyenDto} from './dto/signalement-citoyen-dto/signalement-citoyen.dto';
 import {SignalementUpdateDto} from './dto/signalement-citoyen-dto/signalement-update.dto';
 import {CreateSignalementUpdateDto} from './dto/signalement-citoyen-dto/create-signalement-update.dto';
 import {JwtAuthGuard} from '../auth/guards/jwt-auth.guard';
 import {OptionalJwtAuthGuard} from '../auth/guards/optional-jwt-auth.guard';
 import {AdminGuard} from '../auth/guards/admin.guard';
+import {PaginatedResponseDto} from '../../common/dto/paginated-response.dto';
 
 @ApiTags('Signalement Citoyen')
 @ApiBearerAuth('JWT')
+@ApiExtraModels(PaginatedResponseDto)
 @Controller('signalement-citoyen')
 export class SignalementCitoyenController {
 	constructor(
@@ -100,26 +102,13 @@ export class SignalementCitoyenController {
 		description:
 			'Retourne une liste paginée de signalements avec possibilité de filtrer par différents critères',
 	})
-	@ApiResponse({
-		status: HttpStatus.OK,
+	@ApiOkResponse({
 		description: 'Liste des signalements récupérée avec succès',
 		schema: {
-			type: 'object',
-			properties: {
-				data: {
-					type: 'array',
-					items: {$ref: '#/components/schemas/SignalementCitoyenDto'},
-				},
-				meta: {
-					type: 'object',
-					properties: {
-						total: {type: 'number', example: 100},
-						page: {type: 'number', example: 1},
-						limit: {type: 'number', example: 10},
-						totalPages: {type: 'number', example: 10},
-					},
-				},
-			},
+			allOf: [
+				{$ref: '#/components/schemas/PaginatedResponseDto'},
+				{properties: {data: {type: 'array', items: {$ref: '#/components/schemas/SignalementCitoyenDto'}}}},
+			],
 		},
 	})
 	@ApiResponse({
@@ -138,26 +127,13 @@ export class SignalementCitoyenController {
 		description:
 			"Retourne la liste paginée des signalements créés par l'utilisateur authentifié. L'identifiant du citoyen est déduit du JWT. Utilisé par l'écran profil pour n'afficher que les signalements de l'utilisateur.",
 	})
-	@ApiResponse({
-		status: HttpStatus.OK,
+	@ApiOkResponse({
 		description: 'Liste des signalements du citoyen récupérée avec succès',
 		schema: {
-			type: 'object',
-			properties: {
-				data: {
-					type: 'array',
-					items: {$ref: '#/components/schemas/SignalementCitoyenDto'},
-				},
-				meta: {
-					type: 'object',
-					properties: {
-						total: {type: 'number', example: 4},
-						page: {type: 'number', example: 1},
-						limit: {type: 'number', example: 10},
-						totalPages: {type: 'number', example: 1},
-					},
-				},
-			},
+			allOf: [
+				{$ref: '#/components/schemas/PaginatedResponseDto'},
+				{properties: {data: {type: 'array', items: {$ref: '#/components/schemas/SignalementCitoyenDto'}}}},
+			],
 		},
 	})
 	@ApiResponse({
@@ -165,16 +141,22 @@ export class SignalementCitoyenController {
 		description: 'Non authentifié',
 	})
 	@UseGuards(JwtAuthGuard)
+	// `@Query('page')` plutot qu'un DTO type : le handler a toujours ignore en
+	// silence les parametres inconnus et les valeurs non numeriques. Passer par
+	// SearchSignalementCitoyenDto les ferait tomber sur le `forbidNonWhitelisted`
+	// global, donc en 400 — une regression pour les clients deja deployes.
 	findMine(
 		@Query('page') page: string,
 		@Query('limit') limit: string,
 		@Req() req: Request,
 	) {
 		const user = req.user as AuthenticatedActor;
-		return this.signalementCitoyenService.findByCitoyen(
-			user.id,
-			Number(page) > 0 ? Number(page) : 1,
-			Number(limit) > 0 ? Number(limit) : 10,
+		return this.signalementCitoyenService.findAll(
+			{
+				citoyenId: user.id,
+				page: Number(page) > 0 ? Number(page) : 1,
+				limit: Number(limit) > 0 ? Number(limit) : 10,
+			},
 			user.id,
 		);
 	}
@@ -185,26 +167,13 @@ export class SignalementCitoyenController {
 		description:
 			"Retourne une liste paginée des signalements VALIDÉS (validation = true), destinée à l'application mobile. Supporte les mêmes filtres que GET / (recherche, catégorie, statut, rayon géographique) et la pagination pour le défilement infini.",
 	})
-	@ApiResponse({
-		status: HttpStatus.OK,
+	@ApiOkResponse({
 		description: 'Liste des signalements validés récupérée avec succès',
 		schema: {
-			type: 'object',
-			properties: {
-				data: {
-					type: 'array',
-					items: {$ref: '#/components/schemas/SignalementCitoyenDto'},
-				},
-				meta: {
-					type: 'object',
-					properties: {
-						total: {type: 'number', example: 42},
-						page: {type: 'number', example: 1},
-						limit: {type: 'number', example: 10},
-						totalPages: {type: 'number', example: 5},
-					},
-				},
-			},
+			allOf: [
+				{$ref: '#/components/schemas/PaginatedResponseDto'},
+				{properties: {data: {type: 'array', items: {$ref: '#/components/schemas/SignalementCitoyenDto'}}}},
+			],
 		},
 	})
 	@UseGuards(OptionalJwtAuthGuard)
@@ -325,27 +294,7 @@ export class SignalementCitoyenController {
 		description: 'Identifiant unique du signalement à modifier',
 		example: 'a1b2c3d4-e5f6-7g8h-9i0j-k1l2m3n4o5p6',
 	})
-	@ApiBody({
-		schema: {
-			type: 'object',
-			properties: {
-				titre: {type: 'string'},
-				description: {type: 'string'},
-				categorieId: {type: 'string', format: 'uuid'},
-				adresse: {type: 'string'},
-				latitude: {type: 'number'},
-				longitude: {type: 'number'},
-				statut: {type: 'string', enum: ['NOUVEAU', 'EN_COURS', 'RESOLU', 'REJETE']},
-				validation: {type: 'boolean', description: 'Nécessite les droits admin'},
-				photoKey: {
-					type: 'string',
-					description:
-						"Nouvelle clé R2 de la photo, obtenue via POST /signalement-citoyen/upload-url",
-					example: 'signalements/1732000000000.jpg',
-				},
-			},
-		},
-	})
+	@ApiBody({type: UpdateSignalementCitoyenDto})
 	@ApiResponse({
 		status: HttpStatus.OK,
 		description: 'Signalement mis à jour avec succès',

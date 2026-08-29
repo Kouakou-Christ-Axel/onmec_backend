@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
-import { ActualitesService } from './actualites.service';
+import { ActualitesService, EDITORIAL_ROLES } from './actualites.service';
 import { CreateActualiteDto } from './dto/create-actualite.dto';
 import { UpdateActualiteDto } from './dto/update-actualite.dto';
 import {
@@ -40,9 +40,6 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AdminRole } from '../../generated/prisma/client';
 import { ActualiteResponseDto } from './dto/actualite-response.dto';
 
-/** Rôles éditoriaux : rédaction et publication des actualités. */
-const EDITORIAL = [AdminRole.ADMIN_NATIONAL, AdminRole.CHARGE_COMMUNICATION];
-
 /**
  * Actualités.
  *
@@ -59,7 +56,7 @@ export class ActualitesController {
 
   @Post()
   @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
-  @AdminRoles(...EDITORIAL)
+  @AdminRoles(...EDITORIAL_ROLES)
   @ApiBearerAuth('JWT')
   @ApiOperation({
     summary: 'Créer une actualité',
@@ -82,7 +79,7 @@ export class ActualitesController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
-  @AdminRoles(...EDITORIAL)
+  @AdminRoles(...EDITORIAL_ROLES)
   @ApiBearerAuth('JWT')
   @ApiOperation({ summary: 'Modifier une actualité' })
   @ApiParam({ name: 'id', description: "Identifiant de l'actualité" })
@@ -98,7 +95,7 @@ export class ActualitesController {
 
   @Post('upload-url')
   @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
-  @AdminRoles(...EDITORIAL)
+  @AdminRoles(...EDITORIAL_ROLES)
   @ApiBearerAuth('JWT')
   @ApiOperation({
     summary: "Demander une URL présignée pour l'image de couverture",
@@ -121,7 +118,7 @@ export class ActualitesController {
 
   @Post('upload-image')
   @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
-  @AdminRoles(...EDITORIAL)
+  @AdminRoles(...EDITORIAL_ROLES)
   @ApiBearerAuth('JWT')
   @ApiOperation({
     summary: "Demander une URL présignée pour une image du corps d'un article",
@@ -144,7 +141,7 @@ export class ActualitesController {
 
   @Patch(':id/publier')
   @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
-  @AdminRoles(...EDITORIAL)
+  @AdminRoles(...EDITORIAL_ROLES)
   @ApiBearerAuth('JWT')
   @ApiOperation({
     summary: 'Publier une actualité',
@@ -159,7 +156,7 @@ export class ActualitesController {
 
   @Patch(':id/depublier')
   @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
-  @AdminRoles(...EDITORIAL)
+  @AdminRoles(...EDITORIAL_ROLES)
   @ApiBearerAuth('JWT')
   @ApiOperation({
     summary: 'Dépublier une actualité',
@@ -173,7 +170,7 @@ export class ActualitesController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
-  @AdminRoles(...EDITORIAL)
+  @AdminRoles(...EDITORIAL_ROLES)
   @ApiBearerAuth('JWT')
   @ApiOperation({
     summary: 'Supprimer une actualité',
@@ -203,7 +200,7 @@ export class ActualitesController {
 
   @Get('admin')
   @UseGuards(JwtAuthGuard, AdminGuard, AdminRolesGuard)
-  @AdminRoles(...EDITORIAL)
+  @AdminRoles(...EDITORIAL_ROLES)
   @ApiBearerAuth('JWT')
   @ApiOperation({
     summary: 'Liste back-office des actualités',

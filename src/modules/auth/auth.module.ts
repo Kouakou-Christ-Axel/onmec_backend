@@ -28,14 +28,5 @@ import { AdminRolesGuard } from './guards/admin-roles.guard';
     AdminGuard,
     AdminRolesGuard,
   ],
-  // Les guards sont exportes : les autres modules les importaient jusqu'ici
-  // par chemin de fichier direct, sans passer par le module.
-  exports: [
-    JwtAuthGuard,
-    JwtRefreshAuthGuard,
-    OptionalJwtAuthGuard,
-    AdminGuard,
-    AdminRolesGuard,
-  ],
 })
 export class AuthModule {}

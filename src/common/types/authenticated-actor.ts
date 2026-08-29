@@ -56,10 +56,3 @@ export function isAdminActor(
 ): actor is AuthenticatedActor {
   return actor?.type === 'admin';
 }
-
-/** Vrai si l'acteur est un compte citoyen. */
-export function isMemberActor(
-  actor?: AuthenticatedActor | null,
-): actor is AuthenticatedActor {
-  return actor?.type === 'member';
-}

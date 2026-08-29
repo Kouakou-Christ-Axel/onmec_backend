@@ -56,3 +56,6 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 uploads
 .idea/
 src/generated/
+
+# Worktrees Claude Code (depots git imbriques)
+.claude/worktrees/
