@@ -13,6 +13,7 @@ import {
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { StatutActualite } from '../../../generated/prisma/client';
+import { SplitList } from './split-list.decorator';
 
 export class ActualitesSearchDto {
   @ApiPropertyOptional({
@@ -99,8 +100,6 @@ export class ActualitesSearchDto {
   @IsString()
   categorie?: string;
 
-  // Accepte `?tags=sante&tags=education` comme `?tags=sante,education`.
-  // Sans le @Transform, la seconde forme produirait un unique tag inexistant.
   @ApiPropertyOptional({
     description:
       'Slugs de tags, séparés par des virgules ou répétés. Une actualité ressort si elle porte au moins un des tags.',
@@ -108,12 +107,7 @@ export class ActualitesSearchDto {
     type: [String],
   })
   @IsOptional()
-  @Transform(({ value }) => {
-    if (value === undefined || value === null || value === '') return undefined;
-    const brut = Array.isArray(value) ? value : String(value).split(',');
-    const propres = brut.map((t) => String(t).trim()).filter(Boolean);
-    return propres.length ? propres : undefined;
-  })
+  @SplitList()
   @IsArray()
   @IsString({ each: true })
   @ArrayMaxSize(10)

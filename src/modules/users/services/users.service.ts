@@ -5,7 +5,6 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { extname } from 'path';
 
 import { CreateUserDto } from '../dto/create-user.dto';
 import { Prisma, StatutMembre } from '../../../generated/prisma/client';
@@ -17,13 +16,9 @@ import { UpdateUserDto } from '../dto/update-user.dto';
 import { UpdateUserPasswordDto } from '../dto/update-user-password.dto';
 import { UpdateMemberStatutDto } from '../dto/update-member-statut.dto';
 import { GenerateDataService } from 'src/common/services/generate-data.service';
-import { GenerateConfigService } from 'src/common/services/generate-config.service';
 import { R2StorageService } from 'src/common/services/r2-storage.service';
 import { ResetUserPasswordResponseDto } from '../dto/reset-user-password.dto';
 import { UploadAvatarResponseDto } from '../dto/upload-avatar.dto';
-
-/** Durée de validité des URL présignées d'upload d'avatar, en secondes. */
-const AVATAR_UPLOAD_EXPIRES_IN = 300;
 
 /**
  * Champs exposables d'un membre.
@@ -113,26 +108,11 @@ export class UsersService {
   }
 
   /** Génère une URL présignée pour l'avatar d'un membre. */
-  async buildAvatarUploadUrl(
+  buildAvatarUploadUrl(
     filename: string,
     contentType: string,
   ): Promise<UploadAvatarResponseDto> {
-    if (!filename.match(GenerateConfigService.ALLOWED_IMAGE_EXT)) {
-      throw new BadRequestException(
-        'Seuls les fichiers image sont acceptés (jpg, jpeg, png, gif, webp, heic, heif)',
-      );
-    }
-
-    const ext = extname(filename);
-    const name = await GenerateDataService.generateSecureImageName(filename);
-    const key = `users-avatar/${name}${ext}`;
-    const uploadUrl = await this.r2Service.getUploadUrl(
-      key,
-      contentType,
-      AVATAR_UPLOAD_EXPIRES_IN,
-    );
-
-    return { key, uploadUrl, expiresIn: AVATAR_UPLOAD_EXPIRES_IN };
+    return this.r2Service.presignImage('users-avatar', filename, contentType);
   }
 
   /**
@@ -197,15 +177,13 @@ export class UsersService {
 
     const [data, total] = await this.prisma.$transaction([
       this.prisma.member.findMany({
-        where: Object.keys(where).length ? where : undefined,
+        where,
         orderBy: { updatedAt: 'desc' },
         select: MEMBER_PUBLIC_SELECT,
         skip,
         take: limit,
       }),
-      this.prisma.member.count({
-        where: Object.keys(where).length ? where : undefined,
-      }),
+      this.prisma.member.count({ where }),
     ]);
 
     return {
@@ -340,21 +318,7 @@ export class UsersService {
   }
 
   async update(actor: AuthenticatedActor, updateUserDto: UpdateUserDto) {
-    this.assertAvatarKey(updateUserDto.avatarKey);
-    const existing = await this.assertExists(actor.id);
-
-    const { avatarKey, ...userData } = updateUserDto;
-    const updated = await this.prisma.member.update({
-      where: { id: actor.id },
-      data: { ...userData, ...(avatarKey ? { avatar: avatarKey } : {}) },
-      select: MEMBER_PUBLIC_SELECT,
-    });
-
-    if (avatarKey !== undefined && existing.avatar) {
-      await this.deleteOldAvatar(existing.avatar);
-    }
-
-    return this.mapMember(updated);
+    return this.updateById(actor.id, updateUserDto);
   }
 
   async updatePassword(
@@ -413,13 +377,7 @@ export class UsersService {
 
   /** Suppression de son propre compte par le membre. */
   async partialRemove(actor: AuthenticatedActor) {
-    const updated = await this.prisma.member.update({
-      where: { id: actor.id },
-      data: { deletedAt: new Date() },
-      select: MEMBER_PUBLIC_SELECT,
-    });
-
-    return this.mapMember(updated);
+    return this.softDeleteById(actor.id);
   }
 
   private async assertExists(id: string) {

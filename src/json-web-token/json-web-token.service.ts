@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { JwtPayload } from 'src/common/types/authenticated-actor';
@@ -42,15 +42,5 @@ export class JsonWebTokenService {
       secret: this.refreshSecret,
       expiresIn: this.refreshExpiration,
     });
-  }
-
-  async verifyToken(token: string): Promise<JwtPayload> {
-    try {
-      return await this.jwtService.verifyAsync<JwtPayload>(token, {
-        secret: this.secret,
-      });
-    } catch {
-      throw new UnauthorizedException('Token invalide');
-    }
   }
 }

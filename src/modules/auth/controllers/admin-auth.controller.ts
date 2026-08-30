@@ -21,8 +21,6 @@ import { AdminGuard } from '../guards/admin.guard';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { AuthenticatedActor } from 'src/common/types/authenticated-actor';
 import { AuthService } from '../services/auth.service';
-import { Request } from 'express';
-import { Req } from '@nestjs/common';
 
 /**
  * Authentification du back-office.
@@ -58,8 +56,8 @@ export class AdminAuthController {
   @ApiBearerAuth('JWT')
   @ApiOperation({ summary: 'Rafraîchissement du token back-office' })
   @ApiOkResponse({ description: 'Nouvelle paire de tokens' })
-  async refreshTokenGet(@Req() req: Request) {
-    return this.authService.refreshToken(req);
+  async refreshTokenGet(@CurrentUser() actor: AuthenticatedActor) {
+    return this.authService.refreshToken(actor);
   }
 
   @Post('refresh-token')
@@ -67,8 +65,8 @@ export class AdminAuthController {
   @ApiBearerAuth('JWT')
   @ApiOperation({ summary: 'Rafraîchissement du token back-office' })
   @ApiOkResponse({ description: 'Nouvelle paire de tokens' })
-  async refreshTokenPost(@Req() req: Request) {
-    return this.authService.refreshToken(req);
+  async refreshTokenPost(@CurrentUser() actor: AuthenticatedActor) {
+    return this.authService.refreshToken(actor);
   }
 
   @Get('me')

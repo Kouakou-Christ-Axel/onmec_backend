@@ -1,32 +1,9 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString } from 'class-validator';
+import {
+  UploadUrlRequestDto,
+  UploadUrlResponseDto,
+} from 'src/common/dto/upload-url.dto';
 
 /** Corps de la demande d'URL présignée pour un avatar de membre. */
-export class UploadAvatarRequestDto {
-  @ApiProperty({
-    description: "Nom du fichier tel qu'il sera envoyé au client (utilisé pour son extension)",
-    example: 'avatar.jpg',
-  })
-  @IsString()
-  @IsNotEmpty()
-  filename: string;
+export class UploadAvatarRequestDto extends UploadUrlRequestDto {}
 
-  @ApiProperty({
-    description: 'Type MIME du fichier, figé dans la signature de l’URL présignée',
-    example: 'image/jpeg',
-  })
-  @IsString()
-  @IsNotEmpty()
-  contentType: string;
-}
-
-export class UploadAvatarResponseDto {
-  @ApiProperty({ description: 'Clé objet R2 générée côté serveur' })
-  key: string;
-
-  @ApiProperty({ description: 'URL PUT présignée vers laquelle envoyer le fichier' })
-  uploadUrl: string;
-
-  @ApiProperty({ description: "Durée de validité de l'URL présignée, en secondes" })
-  expiresIn: number;
-}
+export class UploadAvatarResponseDto extends UploadUrlResponseDto {}

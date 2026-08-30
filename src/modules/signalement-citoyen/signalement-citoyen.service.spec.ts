@@ -13,6 +13,11 @@ describe('SignalementCitoyenService', () => {
     signalementCitoyen: {
       count: jest.fn().mockResolvedValue(0),
       findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn(),
+    },
+    signalementUpdate: {
+      create: jest.fn(),
+      findMany: jest.fn(),
     },
   };
 
@@ -23,7 +28,7 @@ describe('SignalementCitoyenService', () => {
   // Le service credite des points au depot et a la validation d'un
   // signalement ; sans ce provider le module de test ne compile plus.
   const gamificationMock = {
-    attribuerSansEchouer: jest.fn().mockResolvedValue(0),
+    attribuer: jest.fn().mockResolvedValue(0),
   };
 
   // Le service previent le citoyen au changement de statut de son signalement.
@@ -108,6 +113,56 @@ describe('SignalementCitoyenService', () => {
       expect(callArg.where.OR).toBeDefined();
       expect(callArg.skip).toBe(5);
       expect(callArg.take).toBe(5);
+    });
+  });
+
+  describe('addUpdate / getUpdates', () => {
+    it('addUpdate lève NotFoundException si le signalement n’existe pas', async () => {
+      prismaMock.signalementCitoyen.findUnique.mockResolvedValueOnce(null);
+
+      await expect(
+        service.addUpdate('missing-id', 'admin-id', 'texte'),
+      ).rejects.toThrow('Signalement citoyen avec l\'id missing-id introuvable');
+    });
+
+    it('addUpdate reshape la réponse avec auteur (admin présent)', async () => {
+      prismaMock.signalementCitoyen.findUnique.mockResolvedValueOnce({ id: 'sig-1' });
+      prismaMock.signalementUpdate.create.mockResolvedValueOnce({
+        id: 'upd-1',
+        signalementId: 'sig-1',
+        texte: 'texte',
+        createdAt: new Date('2026-01-01'),
+        auteur: { id: 'admin-1', fullname: 'Jean Kouassi' },
+      });
+
+      const result = await service.addUpdate('sig-1', 'admin-1', 'texte');
+
+      expect(result.auteur).toEqual({ id: 'admin-1', fullname: 'Jean Kouassi' });
+    });
+
+    it('getUpdates renvoie auteur: null quand l’admin auteur a été supprimé', async () => {
+      prismaMock.signalementCitoyen.findUnique.mockResolvedValueOnce({ id: 'sig-1' });
+      prismaMock.signalementUpdate.findMany.mockResolvedValueOnce([
+        {
+          id: 'upd-1',
+          signalementId: 'sig-1',
+          texte: 'texte',
+          createdAt: new Date('2026-01-01'),
+          auteur: null,
+        },
+      ]);
+
+      const result = await service.getUpdates('sig-1');
+
+      expect(result[0].auteur).toBeNull();
+    });
+
+    it('getUpdates lève NotFoundException si le signalement n’existe pas', async () => {
+      prismaMock.signalementCitoyen.findUnique.mockResolvedValueOnce(null);
+
+      await expect(service.getUpdates('missing-id')).rejects.toThrow(
+        'Signalement citoyen avec l\'id missing-id introuvable',
+      );
     });
   });
 });

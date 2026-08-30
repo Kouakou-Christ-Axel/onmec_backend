@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform, Type } from 'class-transformer';
+import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
@@ -10,6 +10,7 @@ import {
   IsUUID,
   MaxLength,
 } from 'class-validator';
+import { SplitList } from './split-list.decorator';
 
 export class CreateActualiteDto {
   // `@Type(() => Date)` est nécessaire : JSON ne transporte pas de type Date,
@@ -60,9 +61,6 @@ export class CreateActualiteDto {
   @IsUUID()
   categorieId: string;
 
-  // Requete multipart : le front envoie soit `tags` repete, soit une chaine
-  // separee par des virgules. Le @Transform accepte les deux, sans quoi un
-  // `tags=sante,education` unique arriverait comme un seul tag « sante,education ».
   @ApiPropertyOptional({
     description:
       "Tags libres de l'actualité. Répéter le champ, ou séparer par des virgules. Les tags inconnus sont créés.",
@@ -70,12 +68,7 @@ export class CreateActualiteDto {
     type: [String],
   })
   @IsOptional()
-  @Transform(({ value }) => {
-    if (value === undefined || value === null || value === '') return undefined;
-    const brut = Array.isArray(value) ? value : String(value).split(',');
-    const propres = brut.map((t) => String(t).trim()).filter(Boolean);
-    return propres.length ? propres : undefined;
-  })
+  @SplitList()
   @IsArray()
   @IsString({ each: true })
   @MaxLength(50, { each: true })

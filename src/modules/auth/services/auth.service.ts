@@ -5,7 +5,6 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from 'src/database/services/prisma.service';
-import { Request } from 'express';
 import { OtpPurpose } from '../../../generated/prisma/client';
 import { LoginUserDto } from 'src/modules/auth/dto/login-user.dto';
 import { JsonWebTokenService } from 'src/json-web-token/json-web-token.service';
@@ -112,14 +111,17 @@ export class AuthService {
     };
   }
 
-  private generateOtp(): { secret: string; otp: string } {
+  // Publique : AdminAuthService partage cette generation/verification d'OTP,
+  // le flux back-office etant distinct de celui des membres mais reposant sur
+  // le meme mecanisme TOTP.
+  generateOtp(): { secret: string; otp: string } {
     const secret = authenticator.generateSecret(20);
     totp.options = { step: OTP_STEP_SECONDS, digits: 6, window: 1 };
     const otp = totp.generate(secret);
     return { secret, otp };
   }
 
-  private checkOtp(secret: string, otp: string): boolean {
+  checkOtp(secret: string, otp: string): boolean {
     totp.options = { step: OTP_STEP_SECONDS, digits: 6, window: 1 };
     return totp.verify({ token: otp, secret });
   }
@@ -322,14 +324,11 @@ export class AuthService {
 
   /**
    * Rafraichit la paire de tokens a partir du refresh token.
+   *
+   * `actor` vient de `@CurrentUser()`, alimente par `JwtRefreshAuthGuard` :
+   * la route n'est jamais atteinte si le refresh token est absent ou invalide.
    */
-  async refreshToken(req: Request): Promise<TokenResponse> {
-    const actor = req.user as AuthenticatedActor | undefined;
-
-    if (!actor?.id) {
-      throw new UnauthorizedException('Utilisateur non authentifié');
-    }
-
+  async refreshToken(actor: AuthenticatedActor): Promise<TokenResponse> {
     this.logger.log({ action: 'REFRESH_TOKEN', actorId: actor.id });
 
     return this.generateTokens(actor.id, actor.type, actor.role);
