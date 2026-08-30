@@ -16,6 +16,7 @@ import { NotificationModule } from './modules/notification/notification.module';
 import { ActualitesModule } from './modules/actualites/actualites.module';
 import { EngagementModule } from './modules/engagement/engagement.module';
 import { GamificationModule } from './modules/gamification/gamification.module';
+import { AdminStatisticsModule } from './modules/admin-statistics/admin-statistics.module';
 import { HealthController } from './health/health.controller';
 
 @Module({
@@ -38,6 +39,7 @@ import { HealthController } from './health/health.controller';
     ActualitesModule,
     EngagementModule,
     GamificationModule,
+    AdminStatisticsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
