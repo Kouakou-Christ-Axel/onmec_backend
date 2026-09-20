@@ -37,6 +37,14 @@ enum StatutActualite {
   ARCHIVEE
 }
 
+// Canal de diffusion d'une actualite. BOTH couvre web et mobile ; le defaut
+// WEB preserve le comportement actuel (seul le site web consomme l'API).
+enum ScopeActualite {
+  WEB
+  MOBILE
+  BOTH
+}
+
 // Compte du back-office. Séparé des membres : cycle de vie, rôles et flux
 // d'authentification n'ont rien en commun.
 model Admin {
@@ -355,6 +363,11 @@ model Actualite {
   publishedAt DateTime?
   deletedAt   DateTime?
 
+  // Canal de diffusion. Defaut WEB : seul le site web consomme l'API
+  // aujourd'hui, une actualite existante ne doit pas devenir visible sur un
+  // futur client mobile sans decision explicite.
+  scope ScopeActualite @default(WEB)
+
   authorId String? @db.Uuid
   author   Admin?  @relation("ActualiteAuthor", fields: [authorId], references: [id])
 
@@ -375,6 +388,7 @@ model Actualite {
   @@index([statut, date(sort: Desc)])
   @@index([deletedAt])
   @@index([categorieId])
+  @@index([scope])
   @@map("actualites")
 }
 

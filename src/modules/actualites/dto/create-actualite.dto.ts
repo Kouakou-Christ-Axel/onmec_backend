@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsDate,
+  IsEnum,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -11,6 +12,7 @@ import {
   MaxLength,
 } from 'class-validator';
 import { SplitList } from './split-list.decorator';
+import { ScopeActualite } from '../../../generated/prisma/client';
 
 export class CreateActualiteDto {
   // `@Type(() => Date)` est nécessaire : JSON ne transporte pas de type Date,
@@ -83,4 +85,14 @@ export class CreateActualiteDto {
   @IsOptional()
   @IsString()
   imageKey?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Canal de diffusion de l'actualité. Absent : la base pose WEB (comportement actuel, seul le site web consomme l'API).",
+    enum: ScopeActualite,
+    example: ScopeActualite.WEB,
+  })
+  @IsOptional()
+  @IsEnum(ScopeActualite)
+  scope?: ScopeActualite;
 }

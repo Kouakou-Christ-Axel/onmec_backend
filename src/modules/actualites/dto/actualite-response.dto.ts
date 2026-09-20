@@ -1,5 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AdminRole, StatutActualite } from '../../../generated/prisma/client';
+import {
+  AdminRole,
+  ScopeActualite,
+  StatutActualite,
+} from '../../../generated/prisma/client';
 
 export class ActualiteAuthorDto {
   @ApiProperty({ example: '10000000-0000-0000-0000-000000000001' })
@@ -54,6 +58,13 @@ export class ActualiteResponseDto {
 
   @ApiProperty({ enum: StatutActualite, example: StatutActualite.PUBLIEE })
   statut: StatutActualite;
+
+  @ApiProperty({
+    description: 'Canal de diffusion',
+    enum: ScopeActualite,
+    example: ScopeActualite.WEB,
+  })
+  scope: ScopeActualite;
 
   @ApiPropertyOptional({
     description: 'Date de première publication',

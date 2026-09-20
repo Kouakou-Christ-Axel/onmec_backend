@@ -30,7 +30,10 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { ActualitesSearchDto } from './dto/actualites-search.dto';
+import {
+  ActualitesSearchDto,
+  PlateformeQueryDto,
+} from './dto/actualites-search.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
@@ -240,9 +243,10 @@ export class ActualitesController {
   @ApiNotFoundResponse({ description: 'Actualité non trouvée' })
   findBySlug(
     @Param('slug') slug: string,
+    @Query() { platform }: PlateformeQueryDto,
     @CurrentUser() actor?: AuthenticatedActor,
   ) {
-    return this.actualitesService.findBySlug(slug, actor);
+    return this.actualitesService.findBySlug(slug, actor, platform);
   }
 
   @Get(':id')
@@ -252,7 +256,11 @@ export class ActualitesController {
   @ApiOkResponse({ description: 'Actualité trouvée', type: ActualiteResponseDto })
   @ApiNotFoundResponse({ description: 'Actualité non trouvée ou non publiée' })
   @ApiUnauthorizedResponse({ description: 'Token invalide' })
-  findOne(@Param('id') id: string, @CurrentUser() actor?: AuthenticatedActor) {
-    return this.actualitesService.findOne(id, actor);
+  findOne(
+    @Param('id') id: string,
+    @Query() { platform }: PlateformeQueryDto,
+    @CurrentUser() actor?: AuthenticatedActor,
+  ) {
+    return this.actualitesService.findOne(id, actor, platform);
   }
 }
