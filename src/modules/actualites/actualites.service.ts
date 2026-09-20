@@ -9,8 +9,15 @@ import { UpdateActualiteDto } from './dto/update-actualite.dto';
 import { UploadImageResponseDto } from './dto/upload-image.dto';
 import { PrismaService } from 'src/database/services/prisma.service';
 import slugify from '../../../utils/slugify';
-import { ActualitesSearchDto } from './dto/actualites-search.dto';
-import { Prisma, StatutActualite } from '../../generated/prisma/client';
+import {
+  ActualitesSearchDto,
+  PlateformeActualite,
+} from './dto/actualites-search.dto';
+import {
+  Prisma,
+  ScopeActualite,
+  StatutActualite,
+} from '../../generated/prisma/client';
 import { EngagementService } from '../engagement/engagement.service';
 import {
   NOTIFICATION_TYPE,
@@ -75,19 +82,31 @@ export class ActualitesService {
   /**
    * Filtre de visibilité.
    *
-   * Un membre ou un visiteur anonyme ne voit que les actualités publiées et
-   * non supprimées. Les rôles éditoriaux voient tout, y compris les brouillons,
-   * pour pouvoir prévisualiser avant publication.
+   * Un membre ou un visiteur anonyme ne voit que les actualités publiées, non
+   * supprimées, et diffusées sur sa plateforme (`platform`, défaut WEB — les
+   * routes publiques ne sont appelées que par le site web aujourd'hui). Les
+   * rôles éditoriaux voient tout, y compris les brouillons et les autres
+   * canaux, pour pouvoir gérer une actualité indépendamment de son scope.
    */
   private visibilityFilter(
     actor?: AuthenticatedActor,
+    platform: PlateformeActualite = 'WEB',
   ): Prisma.ActualiteWhereInput {
     const canSeeDrafts =
       isAdminActor(actor) && EDITORIAL_ROLES.includes(actor.role as AdminRole);
 
-    return canSeeDrafts
-      ? { deletedAt: null }
-      : { deletedAt: null, statut: StatutActualite.PUBLIEE };
+    if (canSeeDrafts) {
+      return { deletedAt: null };
+    }
+
+    const scopePourPlateforme =
+      platform === 'MOBILE' ? ScopeActualite.MOBILE : ScopeActualite.WEB;
+
+    return {
+      deletedAt: null,
+      statut: StatutActualite.PUBLIEE,
+      scope: { in: [scopePourPlateforme, ScopeActualite.BOTH] },
+    };
   }
 
   /**
@@ -261,10 +280,19 @@ export class ActualitesService {
     const limit = query?.limit ?? 10;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.ActualiteWhereInput = this.visibilityFilter(actor);
+    const where: Prisma.ActualiteWhereInput = this.visibilityFilter(
+      actor,
+      query?.platform,
+    );
 
     if (statutFilter) {
       where.statut = statutFilter;
+    }
+
+    // Filtre exact, distinct de `platform` : sert le back-office (voir une
+    // seule diffusion à la fois), pas la visibilité publique.
+    if (query?.scope) {
+      where.scope = query.scope;
     }
 
     const rawSearch = query?.search?.trim();
@@ -335,9 +363,13 @@ export class ActualitesService {
     };
   }
 
-  async findOne(id: string, actor?: AuthenticatedActor) {
+  async findOne(
+    id: string,
+    actor?: AuthenticatedActor,
+    platform?: PlateformeActualite,
+  ) {
     const actualite = await this.prisma.actualite.findFirst({
-      where: { id, ...this.visibilityFilter(actor) },
+      where: { id, ...this.visibilityFilter(actor, platform) },
       include: ACTUALITE_INCLUDE,
     });
 
@@ -349,9 +381,13 @@ export class ActualitesService {
     return this.withEngagement(this.withPublicImageUrl(actualite), actualite.id, actor);
   }
 
-  async findBySlug(slug: string, actor?: AuthenticatedActor) {
+  async findBySlug(
+    slug: string,
+    actor?: AuthenticatedActor,
+    platform?: PlateformeActualite,
+  ) {
     const actualite = await this.prisma.actualite.findFirst({
-      where: { slug, ...this.visibilityFilter(actor) },
+      where: { slug, ...this.visibilityFilter(actor, platform) },
       include: ACTUALITE_INCLUDE,
     });
 

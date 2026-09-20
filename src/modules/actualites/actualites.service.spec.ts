@@ -4,7 +4,11 @@ import { PrismaService } from '../../database/services/prisma.service';
 import { EngagementService } from '../engagement/engagement.service';
 import { NotificationService } from '../notification/notification.service';
 import { R2StorageService } from '../../common/services/r2-storage.service';
-import { AdminRole, StatutActualite } from '../../generated/prisma/client';
+import {
+  AdminRole,
+  ScopeActualite,
+  StatutActualite,
+} from '../../generated/prisma/client';
 import {
   AuthenticatedActor,
   MEMBER_ROLE,
@@ -40,8 +44,11 @@ describe('ActualitesService', () => {
   const mapImageUrl = (svc: ActualitesService, imageUrl: string | null) =>
     (svc as any).withPublicImageUrl({ imageUrl }).imageUrl;
 
-  const visibility = (svc: ActualitesService, actor?: AuthenticatedActor) =>
-    (svc as any).visibilityFilter(actor);
+  const visibility = (
+    svc: ActualitesService,
+    actor?: AuthenticatedActor,
+    platform?: 'WEB' | 'MOBILE',
+  ) => (svc as any).visibilityFilter(actor, platform);
 
   const actor = (
     type: 'admin' | 'member',
@@ -134,33 +141,47 @@ describe('ActualitesService', () => {
   });
 
   describe('filtre de visibilité', () => {
-    it('restreint un visiteur anonyme aux actualités publiées', () => {
+    it('restreint un visiteur anonyme aux actualités publiées diffusées sur le web (défaut)', () => {
       expect(visibility(service, undefined)).toEqual({
         deletedAt: null,
         statut: StatutActualite.PUBLIEE,
+        scope: { in: [ScopeActualite.WEB, ScopeActualite.BOTH] },
       });
     });
 
-    it('restreint un membre aux actualités publiées', () => {
+    it('restreint un membre aux actualités publiées diffusées sur le web (défaut)', () => {
       expect(visibility(service, actor('member', MEMBER_ROLE))).toEqual({
         deletedAt: null,
         statut: StatutActualite.PUBLIEE,
+        scope: { in: [ScopeActualite.WEB, ScopeActualite.BOTH] },
       });
     });
 
-    it('restreint le modérateur aux actualités publiées', () => {
+    it('restreint le modérateur aux actualités publiées diffusées sur le web (défaut)', () => {
       expect(visibility(service, actor('admin', AdminRole.MODERATEUR))).toEqual({
         deletedAt: null,
         statut: StatutActualite.PUBLIEE,
+        scope: { in: [ScopeActualite.WEB, ScopeActualite.BOTH] },
       });
     });
 
-    it('laisse les rôles éditoriaux voir les brouillons', () => {
+    it('restreint un visiteur mobile aux actualités diffusées sur mobile', () => {
+      expect(visibility(service, undefined, 'MOBILE')).toEqual({
+        deletedAt: null,
+        statut: StatutActualite.PUBLIEE,
+        scope: { in: [ScopeActualite.MOBILE, ScopeActualite.BOTH] },
+      });
+    });
+
+    it('laisse les rôles éditoriaux voir les brouillons et tous les canaux, quelle que soit la plateforme', () => {
       for (const role of [
         AdminRole.ADMIN_NATIONAL,
         AdminRole.CHARGE_COMMUNICATION,
       ]) {
         expect(visibility(service, actor('admin', role))).toEqual({
+          deletedAt: null,
+        });
+        expect(visibility(service, actor('admin', role), 'MOBILE')).toEqual({
           deletedAt: null,
         });
       }

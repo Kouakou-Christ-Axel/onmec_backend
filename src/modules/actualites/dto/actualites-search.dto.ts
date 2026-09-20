@@ -5,6 +5,7 @@ import {
   IsBoolean,
   IsDateString,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -12,8 +13,27 @@ import {
   Min,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { StatutActualite } from '../../../generated/prisma/client';
+import { ScopeActualite, StatutActualite } from '../../../generated/prisma/client';
 import { SplitList } from './split-list.decorator';
+
+/** Plateforme d'appel, pour filtrer la visibilité des routes publiques. */
+export type PlateformeActualite = 'WEB' | 'MOBILE';
+
+/**
+ * Query params des routes publiques à un seul élément (`findOne`,
+ * `findBySlug`), qui n'ont pas besoin du reste de `ActualitesSearchDto`.
+ */
+export class PlateformeQueryDto {
+  @ApiPropertyOptional({
+    description:
+      "Plateforme de l'appelant. Défaut WEB si absent — préserve le comportement actuel du site web.",
+    enum: ['WEB', 'MOBILE'],
+    example: 'WEB',
+  })
+  @IsOptional()
+  @IsIn(['WEB', 'MOBILE'])
+  platform?: PlateformeActualite;
+}
 
 export class ActualitesSearchDto {
   @ApiPropertyOptional({
@@ -112,4 +132,23 @@ export class ActualitesSearchDto {
   @IsString({ each: true })
   @ArrayMaxSize(10)
   tags?: string[];
+
+  @ApiPropertyOptional({
+    description:
+      'Filtrer par canal de diffusion exact. Réservé en pratique au back-office : sur les routes publiques, la visibilité est gouvernée par `platform`, pas par ce filtre.',
+    enum: ScopeActualite,
+  })
+  @IsOptional()
+  @IsEnum(ScopeActualite)
+  scope?: ScopeActualite;
+
+  @ApiPropertyOptional({
+    description:
+      "Plateforme de l'appelant, pour les routes publiques uniquement (ignoré pour les rôles éditoriaux, qui voient tout). Défaut WEB si absent — préserve le comportement actuel du site web.",
+    enum: ['WEB', 'MOBILE'],
+    example: 'WEB',
+  })
+  @IsOptional()
+  @IsIn(['WEB', 'MOBILE'])
+  platform?: PlateformeActualite;
 }
