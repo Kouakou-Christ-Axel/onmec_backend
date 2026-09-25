@@ -3,6 +3,7 @@ import { PrismaClient } from '../../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcrypt';
 import { seedAdmins } from './seed-admins';
+import { actualitesMec } from './data/actualites-mec';
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -67,6 +68,27 @@ const ID = {
     a2: '31000000-0000-0000-0000-000000000002',
     a3: '31000000-0000-0000-0000-000000000003',
   },
+  // Articles reels du MEC (docs/newsData.js), un UUID fixe par slug pour un
+  // upsert idempotent — voir prisma/seed/data/actualites-mec.ts.
+  actualitesMec: {
+    'le-lancement-du-mouvement-pour-leducation-a-la-citoyennete-mec': '31000000-0000-0000-0000-000000000004',
+    'bilan-premier-semestre-2026-mec-citoyennete': '31000000-0000-0000-0000-000000000005',
+    'rencontre-ministre-communication-mec': '31000000-0000-0000-0000-000000000006',
+    Une_alliance_pour_une_jeunesse_citoyenne_et_engagee: '31000000-0000-0000-0000-000000000007',
+    'ecole-citoyen-plus-cocody-leadership-vision-engagement': '31000000-0000-0000-0000-000000000008',
+    'formation-constitution-code-electoral-lycee-classique-abidjan': '31000000-0000-0000-0000-000000000009',
+    'le-lancement-ecole-citoyen-plus': '31000000-0000-0000-0000-000000000010',
+    'initiative-lagune-propre-blockhauss-qnec-2026': '31000000-0000-0000-0000-000000000011',
+    'citoyen-plus-poursuit-son-chemin': '31000000-0000-0000-0000-000000000012',
+    'mec-rond-point-saint-jean-incivisme-routier': '31000000-0000-0000-0000-000000000013',
+    'gare-sud-zero-graffiti-zero-incivisme-mars-2026': '31000000-0000-0000-0000-000000000014',
+    'lancement-du-mec': '31000000-0000-0000-0000-000000000015',
+    Rencontre_avec_M_Ali_DIARRASSOUBA: '31000000-0000-0000-0000-000000000016',
+    Benedictions_et_Conseils: '31000000-0000-0000-0000-000000000017',
+    'audience-professeur-simplice-yode-dion': '31000000-0000-0000-0000-000000000018',
+    'rencontre-fondation-friedrich-naumann': '31000000-0000-0000-0000-000000000019',
+    'rencontre-delegation-union-europeenne-ci': '31000000-0000-0000-0000-000000000020',
+  } as Record<string, string>,
   categoriesActualite: {
     // Categorie de repli posee par la migration
     // 20260824180000_actualites_categories_tags : meme identifiant, sans quoi
@@ -74,6 +96,10 @@ const ID = {
     generales: '20000000-0000-0000-0000-000000000001',
     vieCitoyenne: '20000000-0000-0000-0000-000000000002',
     infrastructure: '20000000-0000-0000-0000-000000000003',
+    lancement: '20000000-0000-0000-0000-000000000004',
+    institutionnel: '20000000-0000-0000-0000-000000000005',
+    partenariat: '20000000-0000-0000-0000-000000000006',
+    sensibilisation: '20000000-0000-0000-0000-000000000007',
   },
   tagsActualite: {
     plateforme: '30000000-0000-0000-0000-000000000001',
@@ -111,6 +137,71 @@ async function main() {
 
   // ADMINS (back-office) — amorces dans tous les environnements
   const admins = await seedAdmins(prisma);
+
+  // ── CATEGORIES ET TAGS D'ACTUALITE ────────────────────────────────────────────
+  // Contenu editorial reel, pas des donnees de demo : amorce dans tous les
+  // environnements, y compris en production, contrairement au reste de ce fichier.
+  const categoriesActualiteData = [
+    { id: ID.categoriesActualite.generales, nom: 'Actualités générales', slug: 'actualites-generales', description: 'Catégorie de repli des actualités antérieures au classement éditorial.' },
+    { id: ID.categoriesActualite.vieCitoyenne, nom: 'Vie citoyenne', slug: 'vie-citoyenne', description: 'Participation civique, droits et devoirs du citoyen.' },
+    { id: ID.categoriesActualite.infrastructure, nom: 'Infrastructure', slug: 'infrastructure', description: 'Routes, ponts, adduction d’eau et équipements publics.' },
+    { id: ID.categoriesActualite.lancement, nom: 'Lancement', slug: 'lancement', description: 'Cérémonies et étapes de lancement du MEC et de ses programmes.' },
+    { id: ID.categoriesActualite.institutionnel, nom: 'Institutionnel', slug: 'institutionnel', description: 'Bilans et communications institutionnelles du MEC.' },
+    { id: ID.categoriesActualite.partenariat, nom: 'Partenariat', slug: 'partenariat', description: 'Rencontres et accords avec les partenaires du MEC.' },
+    { id: ID.categoriesActualite.sensibilisation, nom: 'Sensibilisation', slug: 'sensibilisation', description: 'Actions et défis citoyens de sensibilisation menés par le MEC.' },
+  ];
+
+  for (const c of categoriesActualiteData) {
+    await prisma.categorieActualite.upsert({ where: { id: c.id }, update: {}, create: c });
+  }
+
+  const tagsActualiteData = [
+    { id: ID.tagsActualite.plateforme, nom: 'Plateforme', slug: 'plateforme' },
+    { id: ID.tagsActualite.participation, nom: 'Participation', slug: 'participation' },
+    { id: ID.tagsActualite.abidjan, nom: 'Abidjan', slug: 'abidjan' },
+    { id: ID.tagsActualite.voirie, nom: 'Voirie', slug: 'voirie' },
+  ];
+
+  for (const t of tagsActualiteData) {
+    await prisma.tagActualite.upsert({ where: { id: t.id }, update: {}, create: t });
+  }
+
+  console.log("✅ Catégories et tags d’actualité seeded");
+
+  // ── ACTUALITES ────────────────────────────────────────────────────────────────
+  const actualitesData = [
+    { id: ID.actualites.a1, slug: 'lancement-plateforme-citoyenne-onmec', title: 'Lancement de la plateforme citoyenne Citoyen+', date: new Date('2025-01-15'), excerpt: 'La plateforme Citoyen+ ouvre ses portes pour connecter les citoyens ivoiriens à leurs institutions.', content: '<p>La plateforme numérique Citoyen+ a été officiellement lancée ce 15 janvier 2025.</p>', imageUrl: '/images/actualites/lancement-onmec.jpg', categorieId: ID.categoriesActualite.vieCitoyenne, statut: 'BROUILLON' as const, tagSlugs: ['plateforme', 'participation'] },
+    { id: ID.actualites.a2, slug: 'journee-nationale-citoyennete-2025', title: 'Journée nationale de la citoyenneté 2025', date: new Date('2025-03-10'), excerpt: "Le 10 mars, la Côte d'Ivoire célèbre la citoyenneté active et la participation civique.", content: "<p>À l'occasion de la Journée nationale de la citoyenneté, plusieurs activités sont organisées à travers le pays.</p>", imageUrl: '/images/actualites/journee-citoyennete.jpg', categorieId: ID.categoriesActualite.vieCitoyenne, statut: 'BROUILLON' as const, tagSlugs: ['participation'] },
+    { id: ID.actualites.a3, slug: 'amelioration-voirie-abidjan-2025', title: "Programme d'amélioration de la voirie à Abidjan", date: new Date('2025-05-20'), excerpt: 'Le gouvernement annonce un vaste programme de réhabilitation des routes abidjanaises.', content: "<p>Dans le cadre du Plan National de Développement, le District d'Abidjan lance un programme pour la réhabilitation de plus de 200 km de voirie urbaine.</p>", imageUrl: '/images/actualites/voirie-abidjan.jpg', categorieId: ID.categoriesActualite.infrastructure, statut: 'BROUILLON' as const, tagSlugs: ['abidjan', 'voirie'] },
+    // Articles reels du MEC (contenu editorial officiel) — publies directement.
+    ...actualitesMec.map((a) => ({
+      id: ID.actualitesMec[a.slug],
+      slug: a.slug,
+      title: a.title,
+      date: a.date,
+      excerpt: a.excerpt,
+      content: a.content,
+      imageUrl: a.imageUrl,
+      categorieId: ID.categoriesActualite[a.categorieSlug as keyof typeof ID.categoriesActualite],
+      statut: 'PUBLIEE' as const,
+      publishedAt: a.date,
+      tagSlugs: [] as string[],
+    })),
+  ];
+
+  for (const a of actualitesData) {
+    const { tagSlugs, ...champs } = a;
+    await prisma.actualite.upsert({
+      where: { id: a.id },
+      update: {},
+      create: {
+        ...champs,
+        tags: { connect: tagSlugs.map((slug) => ({ slug })) },
+      },
+    });
+  }
+
+  console.log('✅ Actualités seeded');
 
   if (!seedDemoData) {
     console.log(
@@ -320,51 +411,6 @@ async function main() {
   }
 
   console.log('✅ Signalements citoyens seeded');
-
-  // ── CATEGORIES ET TAGS D'ACTUALITE ────────────────────────────────────────────
-  const categoriesActualiteData = [
-    { id: ID.categoriesActualite.generales, nom: 'Actualités générales', slug: 'actualites-generales', description: 'Catégorie de repli des actualités antérieures au classement éditorial.' },
-    { id: ID.categoriesActualite.vieCitoyenne, nom: 'Vie citoyenne', slug: 'vie-citoyenne', description: 'Participation civique, droits et devoirs du citoyen.' },
-    { id: ID.categoriesActualite.infrastructure, nom: 'Infrastructure', slug: 'infrastructure', description: 'Routes, ponts, adduction d’eau et équipements publics.' },
-  ];
-
-  for (const c of categoriesActualiteData) {
-    await prisma.categorieActualite.upsert({ where: { id: c.id }, update: {}, create: c });
-  }
-
-  const tagsActualiteData = [
-    { id: ID.tagsActualite.plateforme, nom: 'Plateforme', slug: 'plateforme' },
-    { id: ID.tagsActualite.participation, nom: 'Participation', slug: 'participation' },
-    { id: ID.tagsActualite.abidjan, nom: 'Abidjan', slug: 'abidjan' },
-    { id: ID.tagsActualite.voirie, nom: 'Voirie', slug: 'voirie' },
-  ];
-
-  for (const t of tagsActualiteData) {
-    await prisma.tagActualite.upsert({ where: { id: t.id }, update: {}, create: t });
-  }
-
-  console.log("✅ Catégories et tags d’actualité seeded");
-
-  // ── ACTUALITES ────────────────────────────────────────────────────────────────
-  const actualitesData = [
-    { id: ID.actualites.a1, slug: 'lancement-plateforme-citoyenne-onmec', title: 'Lancement de la plateforme citoyenne Citoyen+', date: new Date('2025-01-15'), excerpt: 'La plateforme Citoyen+ ouvre ses portes pour connecter les citoyens ivoiriens à leurs institutions.', content: '<p>La plateforme numérique Citoyen+ a été officiellement lancée ce 15 janvier 2025.</p>', imageUrl: '/images/actualites/lancement-onmec.jpg', categorieId: ID.categoriesActualite.vieCitoyenne, tagSlugs: ['plateforme', 'participation'] },
-    { id: ID.actualites.a2, slug: 'journee-nationale-citoyennete-2025', title: 'Journée nationale de la citoyenneté 2025', date: new Date('2025-03-10'), excerpt: "Le 10 mars, la Côte d'Ivoire célèbre la citoyenneté active et la participation civique.", content: "<p>À l'occasion de la Journée nationale de la citoyenneté, plusieurs activités sont organisées à travers le pays.</p>", imageUrl: '/images/actualites/journee-citoyennete.jpg', categorieId: ID.categoriesActualite.vieCitoyenne, tagSlugs: ['participation'] },
-    { id: ID.actualites.a3, slug: 'amelioration-voirie-abidjan-2025', title: "Programme d'amélioration de la voirie à Abidjan", date: new Date('2025-05-20'), excerpt: 'Le gouvernement annonce un vaste programme de réhabilitation des routes abidjanaises.', content: "<p>Dans le cadre du Plan National de Développement, le District d'Abidjan lance un programme pour la réhabilitation de plus de 200 km de voirie urbaine.</p>", imageUrl: '/images/actualites/voirie-abidjan.jpg', categorieId: ID.categoriesActualite.infrastructure, tagSlugs: ['abidjan', 'voirie'] },
-  ];
-
-  for (const a of actualitesData) {
-    const { tagSlugs, ...champs } = a;
-    await prisma.actualite.upsert({
-      where: { id: a.id },
-      update: {},
-      create: {
-        ...champs,
-        tags: { connect: tagSlugs.map((slug) => ({ slug })) },
-      },
-    });
-  }
-
-  console.log('✅ Actualités seeded');
 
   // ── DOCUMENTS ─────────────────────────────────────────────────────────────────
   const documentsData = [
